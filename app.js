@@ -36,7 +36,7 @@ function getNRData(date) {
     };
 }
 
-// --- 3. REPORTS UI (FIXED: Added Day Sleep Column) ---
+// --- 3. REPORTS UI (FIXED: Added Day Sleep Marks & Dynamic Highlighting) ---
 function loadReports(userId, containerId) {
     const container = document.getElementById(containerId);
     if (!container) return;
@@ -72,23 +72,28 @@ function loadReports(userId, containerId) {
                             <tr>
                                 <th>Date</th><th>Bed</th><th>M</th><th>Wake</th><th>M</th><th>Chant</th><th>M</th>
                                 <th>Read</th><th>M</th><th>Hear</th><th>M</th><th>Seva</th><th>M</th>
-                                <th>DS(m)</th><th>Total</th><th>%</th>
+                                <th>DS(m)</th><th>M</th><th>Total</th><th>%</th>
                             </tr>
                         </thead>
                         <tbody>
-                            ${week.data.sort((a,b) => b.id.localeCompare(a.id)).map(e => `
+                            ${week.data.sort((a,b) => b.id.localeCompare(a.id)).map(e => {
+                                const rM = e.scores?.reading ?? 0;
+                                const hM = e.scores?.hearing ?? 0;
+                                const isL12 = e.levelAtSubmission?.includes('Level-1') || e.levelAtSubmission?.includes('Level-2');
+                                
+                                return `
                                 <tr style="${e.sleepTime === 'NR' ? 'color: red; background: #fff5f5;' : ''}">
-                                    <td>${e.id}</td>
-                                    <td>${e.sleepTime}</td><td>${e.scores?.sleep || 0}</td>
-                                    <td>${e.wakeupTime}</td><td>${e.scores?.wakeup || 0}</td>
-                                    <td>${e.chantingTime}</td><td>${e.scores?.chanting || 0}</td>
-                                    <td>${e.readingMinutes}m</td><td>${e.scores?.reading || 0}</td>
-                                    <td>${e.hearingMinutes}m</td><td>${e.scores?.hearing || 0}</td>
-                                    <td>${e.serviceMinutes || 0}m</td><td>${e.scores?.service || 0}</td>
-                                    <td>${e.daySleepMinutes || 0}</td>
+                                    <td>${e.id.split('-').slice(1).join('/')}</td>
+                                    <td>${e.sleepTime}</td><td>${e.scores?.sleep ?? 0}</td>
+                                    <td>${e.wakeupTime}</td><td>${e.scores?.wakeup ?? 0}</td>
+                                    <td>${e.chantingTime}</td><td>${e.scores?.chanting ?? 0}</td>
+                                    <td style="${isL12 && rM >= hM ? 'font-weight:bold; color:green;' : ''}">${e.readingMinutes}m</td><td>${rM}</td>
+                                    <td style="${isL12 && hM > rM ? 'font-weight:bold; color:green;' : ''}">${e.hearingMinutes}m</td><td>${hM}</td>
+                                    <td>${e.serviceMinutes || 0}m</td><td>${e.scores?.service ?? 0}</td>
+                                    <td>${e.daySleepMinutes || 0}m</td><td>${e.scores?.daySleep ?? 0}</td>
                                     <td><strong>${e.totalScore}</strong></td>
                                     <td>${e.dayPercent}%</td>
-                                </tr>`).join('')}
+                                </tr>`}).join('')}
                         </tbody>
                     </table>
                 </div>`;
@@ -97,7 +102,7 @@ function loadReports(userId, containerId) {
     });
 }
 
-// --- 4. EXCEL DOWNLOADS (FIXED: Added Day Sleep) ---
+// --- 4. EXCEL DOWNLOADS (Updated with Day Sleep Marks) ---
 document.getElementById('user-download-btn').onclick = () => {
     if(currentUser && userProfile) downloadUserExcel(currentUser.uid, userProfile.name);
 };
@@ -105,14 +110,14 @@ document.getElementById('user-download-btn').onclick = () => {
 window.downloadUserExcel = async (userId, userName) => {
     try {
         const snap = await db.collection('users').doc(userId).collection('sadhana').orderBy('submittedAt', 'asc').get();
-        const rows = [["Date", "Bed", "M", "Wake", "M", "Chant", "M", "Read(m)", "M", "Hear(m)", "M", "Seva(m)", "M", "Day Sleep", "Total", "%"]];
+        const rows = [["Date", "Bed", "M", "Wake", "M", "Chant", "M", "Read(m)", "M", "Hear(m)", "M", "Seva(m)", "M", "Day Sleep", "DS M", "Total", "%"]];
         snap.forEach(doc => {
             const e = doc.data();
             rows.push([
                 doc.id, e.sleepTime, e.scores?.sleep, e.wakeupTime, e.scores?.wakeup, 
                 e.chantingTime, e.scores?.chanting, e.readingMinutes, e.scores?.reading, 
                 e.hearingMinutes, e.scores?.hearing, e.serviceMinutes||0, e.scores?.service, 
-                e.daySleepMinutes || 0, e.totalScore, e.dayPercent+"%"
+                e.daySleepMinutes || 0, e.scores?.daySleep, e.totalScore, e.dayPercent+"%"
             ]);
         });
         const ws = XLSX.utils.aoa_to_sheet(rows);
@@ -122,7 +127,6 @@ window.downloadUserExcel = async (userId, userName) => {
     } catch (e) { alert("Download Failed"); }
 };
 
-// Master Download (Matrix)
 window.downloadMasterReport = async () => {
     try {
         const weeks = [];
@@ -157,14 +161,12 @@ window.downloadMasterReport = async () => {
     } catch (e) { alert("Master Download Failed"); }
 };
 
-// --- 5. FORM SUBMISSIONS ---
-// --- 5. FORM SUBMISSIONS (REWRITTEN SCORING ENGINE) ---
+// --- 5. FORM SUBMISSIONS (LOCKED SCORING ENGINE) ---
 document.getElementById('sadhana-form').onsubmit = async (e) => {
     e.preventDefault();
     const date = document.getElementById('sadhana-date').value;
-    const level = userProfile.chantingCategory; // e.g., "Level-1", "Level-3"
+    const level = userProfile.chantingCategory || "Level-1";
 
-    // Raw Inputs
     const sleepVal = document.getElementById('sleep-time').value;
     const wakeVal = document.getElementById('wakeup-time').value;
     const chantVal = document.getElementById('chanting-time').value;
@@ -173,7 +175,6 @@ document.getElementById('sadhana-form').onsubmit = async (e) => {
     const serviceMins = (parseInt(document.getElementById('service-hrs')?.value) || 0) * 60 + (parseInt(document.getElementById('service-mins')?.value) || 0);
     const dsMins = parseInt(document.getElementById('day-sleep-minutes').value) || 0;
 
-    // Helper: Time to Minutes for comparison
     const t2m = (t) => {
         if (!t || t === "NR") return 9999;
         const [h, m] = t.split(':').map(Number);
@@ -182,9 +183,9 @@ document.getElementById('sadhana-form').onsubmit = async (e) => {
 
     const scores = { sleep: -5, wakeup: -5, chanting: -5, reading: 0, hearing: 0, service: 0, daySleep: 0 };
 
-    // 1. NIDRA (All Levels Same)
+    // Nidra
     const sMin = t2m(sleepVal);
-    if (sMin <= 1350) scores.sleep = 25; // 10:30 PM
+    if (sMin <= 1350) scores.sleep = 25;
     else if (sMin <= 1355) scores.sleep = 20;
     else if (sMin <= 1360) scores.sleep = 15;
     else if (sMin <= 1365) scores.sleep = 10;
@@ -192,11 +193,10 @@ document.getElementById('sadhana-form').onsubmit = async (e) => {
     else if (sMin <= 1375) scores.sleep = 0;
     else scores.sleep = -5;
 
-    // 2. JAGRAN (Level Dependent)
+    // Jagran
     const wMin = t2m(wakeVal);
     const isLevel1or2 = level.includes("Level-1") || level.includes("Level-2");
-    const targetWake = isLevel1or2 ? 365 : 305; // 6:05 AM vs 5:05 AM
-    
+    const targetWake = isLevel1or2 ? 365 : 305;
     if (wMin <= targetWake) scores.wakeup = 25;
     else if (wMin <= targetWake + 5) scores.wakeup = 20;
     else if (wMin <= targetWake + 10) scores.wakeup = 15;
@@ -205,81 +205,81 @@ document.getElementById('sadhana-form').onsubmit = async (e) => {
     else if (wMin <= targetWake + 25) scores.wakeup = 0;
     else scores.wakeup = -5;
 
-    // 3. CHANTING (All Levels Same)
+    // Chanting
     if (chantVal) {
         const cMin = t2m(chantVal);
-        if (cMin <= 540) scores.chanting = 25; // 9:00 AM
-        else if (cMin <= 570) scores.chanting = 20; // 9:30 AM
-        else if (cMin <= 660) scores.chanting = 15; // 11:00 AM
-        else if (cMin <= 870) scores.chanting = 10; // 2:30 PM
-        else if (cMin <= 1020) scores.chanting = 5; // 5:00 PM
-        else if (cMin <= 1140) scores.chanting = 0; // 7:00 PM
+        if (cMin <= 540) scores.chanting = 25;
+        else if (cMin <= 570) scores.chanting = 20;
+        else if (cMin <= 660) scores.chanting = 15;
+        else if (cMin <= 870) scores.chanting = 10;
+        else if (cMin <= 1020) scores.chanting = 5;
+        else if (cMin <= 1140) scores.chanting = 0;
         else scores.chanting = -5;
     }
 
-    // 4. DAY SLEEP (Fixed 10)
+    // Day Sleep
     scores.daySleep = (dsMins <= 60) ? 10 : -5;
 
-    // 5. READING / HEARING / SERVICE
+    // Reading / Hearing / Service
     const getDurationScore = (mins, isL4 = false) => {
         const target = isL4 ? 40 : 30;
         if (mins >= target) return 25;
-        if (mins >= (target - 10)) return 20;
-        if (mins >= 20) return 15;
-        if (mins >= 15) return 10;
-        if (mins >= 10) return 5;
-        if (mins >= 5) return 0;
+        else if (mins >= (target - 10)) return 20;
+        else if (mins >= 20) return 15;
+        else if (mins >= 15) return 10;
+        else if (mins >= 10) return 5;
+        else if (mins >= 5) return 0;
         return -5;
     };
 
     const isL4 = level.includes("Level-4");
     const rScoreRaw = getDurationScore(readMins, isL4);
     const hScoreRaw = getDurationScore(hearMins, isL4);
-    const sevScoreRaw = getDurationScore(serviceMins, false); // Service always 30m target
+    const sevScoreRaw = getDurationScore(serviceMins, false);
 
-    let finalStudyScore = 0;
+    let finalActivityScore = 0;
     let maxObtainable = 110;
 
     if (isLevel1or2) {
-        // Best of Two Logic (No penalty for skip)
-        const rPos = Math.max(0, rScoreRaw);
-        const hPos = Math.max(0, hScoreRaw);
-        scores.reading = rPos;
-        scores.hearing = hPos;
-        finalStudyScore = Math.max(rPos, hPos);
-        scores.service = 0; // Not counted in L1/2
+        scores.reading = Math.max(0, rScoreRaw);
+        scores.hearing = Math.max(0, hScoreRaw);
+        scores.service = 0;
+        finalActivityScore = Math.max(scores.reading, scores.hearing);
         maxObtainable = 110;
     } else {
-        // Compulsory Logic for L3/L4
         scores.reading = rScoreRaw;
         scores.hearing = hScoreRaw;
         scores.service = sevScoreRaw;
-        finalStudyScore = scores.reading + scores.hearing + scores.service;
+        finalActivityScore = scores.reading + scores.hearing + scores.service;
         maxObtainable = 160;
     }
 
-    // Final Total Calculation
-    const totalScore = scores.sleep + scores.wakeup + scores.chanting + scores.daySleep + finalStudyScore;
+    const totalScore = scores.sleep + scores.wakeup + scores.chanting + scores.daySleep + finalActivityScore;
     const dayPercent = Math.round((totalScore / maxObtainable) * 100);
 
     const entry = {
-        sleepTime: sleepVal,
-        wakeupTime: wakeVal,
-        chantingTime: chantVal,
-        readingMinutes: readMins,
-        hearingMinutes: hearMins,
-        serviceMinutes: serviceMins,
-        daySleepMinutes: dsMins,
-        scores: scores,
-        totalScore: totalScore,
-        dayPercent: dayPercent,
-        levelAtSubmission: level,
-        submittedAt: firebase.firestore.FieldValue.serverTimestamp()
+        sleepTime: sleepVal, wakeupTime: wakeVal, chantingTime: chantVal,
+        readingMinutes: readMins, hearingMinutes: hearMins, serviceMinutes: serviceMins, daySleepMinutes: dsMins,
+        scores: scores, totalScore: totalScore, dayPercent: dayPercent,
+        levelAtSubmission: level, submittedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
 
     await db.collection('users').doc(currentUser.uid).collection('sadhana').doc(date).set(entry);
-    alert(`Submitted! Total Score: ${totalScore} (${dayPercent}%)`);
+    alert(`Sadhana Submitted! Score: ${totalScore} (${dayPercent}%)`);
     switchTab('reports');
+};
+
+document.getElementById('profile-form').onsubmit = async (e) => {
+    e.preventDefault();
+    const data = {
+        name: document.getElementById('profile-name').value,
+        chantingCategory: document.getElementById('profile-chanting').value,
+        exactRounds: document.getElementById('profile-exact-rounds').value,
+        role: userProfile?.role || 'user'
+    };
+    await db.collection('users').doc(currentUser.uid).set(data, { merge: true });
+    alert("Profile Saved!");
+    location.reload();
 };
 
 // --- 6. CORE LOGIC ---
