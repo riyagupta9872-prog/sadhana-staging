@@ -158,41 +158,128 @@ window.downloadMasterReport = async () => {
 };
 
 // --- 5. FORM SUBMISSIONS ---
+// --- 5. FORM SUBMISSIONS (REWRITTEN SCORING ENGINE) ---
 document.getElementById('sadhana-form').onsubmit = async (e) => {
     e.preventDefault();
     const date = document.getElementById('sadhana-date').value;
+    const level = userProfile.chantingCategory; // e.g., "Level-1", "Level-3"
+
+    // Raw Inputs
+    const sleepVal = document.getElementById('sleep-time').value;
+    const wakeVal = document.getElementById('wakeup-time').value;
+    const chantVal = document.getElementById('chanting-time').value;
+    const readMins = (parseInt(document.getElementById('reading-hrs').value) || 0) * 60 + (parseInt(document.getElementById('reading-mins').value) || 0);
+    const hearMins = (parseInt(document.getElementById('hearing-hrs').value) || 0) * 60 + (parseInt(document.getElementById('hearing-mins').value) || 0);
+    const serviceMins = (parseInt(document.getElementById('service-hrs')?.value) || 0) * 60 + (parseInt(document.getElementById('service-mins')?.value) || 0);
+    const dsMins = parseInt(document.getElementById('day-sleep-minutes').value) || 0;
+
+    // Helper: Time to Minutes for comparison
+    const t2m = (t) => {
+        if (!t || t === "NR") return 9999;
+        const [h, m] = t.split(':').map(Number);
+        return h * 60 + m;
+    };
+
+    const scores = { sleep: -5, wakeup: -5, chanting: -5, reading: 0, hearing: 0, service: 0, daySleep: 0 };
+
+    // 1. NIDRA (All Levels Same)
+    const sMin = t2m(sleepVal);
+    if (sMin <= 1350) scores.sleep = 25; // 10:30 PM
+    else if (sMin <= 1355) scores.sleep = 20;
+    else if (sMin <= 1360) scores.sleep = 15;
+    else if (sMin <= 1365) scores.sleep = 10;
+    else if (sMin <= 1370) scores.sleep = 5;
+    else if (sMin <= 1375) scores.sleep = 0;
+    else scores.sleep = -5;
+
+    // 2. JAGRAN (Level Dependent)
+    const wMin = t2m(wakeVal);
+    const isLevel1or2 = level.includes("Level-1") || level.includes("Level-2");
+    const targetWake = isLevel1or2 ? 365 : 305; // 6:05 AM vs 5:05 AM
+    
+    if (wMin <= targetWake) scores.wakeup = 25;
+    else if (wMin <= targetWake + 5) scores.wakeup = 20;
+    else if (wMin <= targetWake + 10) scores.wakeup = 15;
+    else if (wMin <= targetWake + 15) scores.wakeup = 10;
+    else if (wMin <= targetWake + 20) scores.wakeup = 5;
+    else if (wMin <= targetWake + 25) scores.wakeup = 0;
+    else scores.wakeup = -5;
+
+    // 3. CHANTING (All Levels Same)
+    if (chantVal) {
+        const cMin = t2m(chantVal);
+        if (cMin <= 540) scores.chanting = 25; // 9:00 AM
+        else if (cMin <= 570) scores.chanting = 20; // 9:30 AM
+        else if (cMin <= 660) scores.chanting = 15; // 11:00 AM
+        else if (cMin <= 870) scores.chanting = 10; // 2:30 PM
+        else if (cMin <= 1020) scores.chanting = 5; // 5:00 PM
+        else if (cMin <= 1140) scores.chanting = 0; // 7:00 PM
+        else scores.chanting = -5;
+    }
+
+    // 4. DAY SLEEP (Fixed 10)
+    scores.daySleep = (dsMins <= 60) ? 10 : -5;
+
+    // 5. READING / HEARING / SERVICE
+    const getDurationScore = (mins, isL4 = false) => {
+        const target = isL4 ? 40 : 30;
+        if (mins >= target) return 25;
+        if (mins >= (target - 10)) return 20;
+        if (mins >= 20) return 15;
+        if (mins >= 15) return 10;
+        if (mins >= 10) return 5;
+        if (mins >= 5) return 0;
+        return -5;
+    };
+
+    const isL4 = level.includes("Level-4");
+    const rScoreRaw = getDurationScore(readMins, isL4);
+    const hScoreRaw = getDurationScore(hearMins, isL4);
+    const sevScoreRaw = getDurationScore(serviceMins, false); // Service always 30m target
+
+    let finalStudyScore = 0;
+    let maxObtainable = 110;
+
+    if (isLevel1or2) {
+        // Best of Two Logic (No penalty for skip)
+        const rPos = Math.max(0, rScoreRaw);
+        const hPos = Math.max(0, hScoreRaw);
+        scores.reading = rPos;
+        scores.hearing = hPos;
+        finalStudyScore = Math.max(rPos, hPos);
+        scores.service = 0; // Not counted in L1/2
+        maxObtainable = 110;
+    } else {
+        // Compulsory Logic for L3/L4
+        scores.reading = rScoreRaw;
+        scores.hearing = hScoreRaw;
+        scores.service = sevScoreRaw;
+        finalStudyScore = scores.reading + scores.hearing + scores.service;
+        maxObtainable = 160;
+    }
+
+    // Final Total Calculation
+    const totalScore = scores.sleep + scores.wakeup + scores.chanting + scores.daySleep + finalStudyScore;
+    const dayPercent = Math.round((totalScore / maxObtainable) * 100);
+
     const entry = {
-        sleepTime: document.getElementById('sleep-time').value,
-        wakeupTime: document.getElementById('wakeup-time').value,
-        chantingTime: document.getElementById('chanting-time').value,
-        readingMinutes: (parseInt(document.getElementById('reading-hrs').value)||0)*60 + (parseInt(document.getElementById('reading-mins').value)||0),
-        hearingMinutes: (parseInt(document.getElementById('hearing-hrs').value)||0)*60 + (parseInt(document.getElementById('hearing-mins').value)||0),
-        serviceMinutes: (parseInt(document.getElementById('service-hrs')?.value)||0)*60 + (parseInt(document.getElementById('service-mins')?.value)||0),
-        daySleepMinutes: parseInt(document.getElementById('day-sleep-minutes').value) || 0,
+        sleepTime: sleepVal,
+        wakeupTime: wakeVal,
+        chantingTime: chantVal,
+        readingMinutes: readMins,
+        hearingMinutes: hearMins,
+        serviceMinutes: serviceMins,
+        daySleepMinutes: dsMins,
+        scores: scores,
+        totalScore: totalScore,
+        dayPercent: dayPercent,
+        levelAtSubmission: level,
         submittedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
-    
-    // Default scoring for now
-    entry.scores = { sleep: 25, wakeup: 25, chanting: 25, reading: 25, hearing: 25, service: 10 };
-    entry.totalScore = 135;
-    entry.dayPercent = 100;
 
     await db.collection('users').doc(currentUser.uid).collection('sadhana').doc(date).set(entry);
-    alert("Sadhana Submitted!");
+    alert(`Submitted! Total Score: ${totalScore} (${dayPercent}%)`);
     switchTab('reports');
-};
-
-document.getElementById('profile-form').onsubmit = async (e) => {
-    e.preventDefault();
-    const data = {
-        name: document.getElementById('profile-name').value,
-        chantingCategory: document.getElementById('profile-chanting').value,
-        exactRounds: document.getElementById('profile-exact-rounds').value,
-        role: userProfile?.role || 'user'
-    };
-    await db.collection('users').doc(currentUser.uid).set(data, { merge: true });
-    alert("Profile Saved!");
-    location.reload();
 };
 
 // --- 6. CORE LOGIC ---
