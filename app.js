@@ -175,12 +175,17 @@ document.getElementById('sadhana-form').onsubmit = async (e) => {
     const serviceMins = (parseInt(document.getElementById('service-hrs')?.value) || 0) * 60 + (parseInt(document.getElementById('service-mins')?.value) || 0);
     const dsMins = parseInt(document.getElementById('day-sleep-minutes').value) || 0;
 
-    const t2m = (t) => {
-        if (!t || t === "NR") return 9999;
-        const [h, m] = t.split(':').map(Number);
-        return h * 60 + m;
-    };
-
+    // REPLACE WITH THIS FIXED BLOCK:
+const t2m = (t) => {
+    if (!t || t === "NR") return 9999;
+    let [h, m] = t.split(':').map(Number);
+    
+    // If hour is 0, 1, 2, or 3 (Midnight to 3:59 AM), 
+    // we add 24 hours to treat it as the end of the previous day.
+    if (h >= 0 && h <= 3) h += 24; 
+    
+    return h * 60 + m;
+};
     const scores = { sleep: -5, wakeup: -5, chanting: -5, reading: 0, hearing: 0, service: 0, daySleep: 0 };
 
     // Nidra
