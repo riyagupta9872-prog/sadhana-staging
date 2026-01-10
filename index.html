@@ -7,34 +7,36 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
     <style>
         :root { --primary: #2c3e50; --secondary: #3498db; --success: #27ae60; --danger: #e74c3c; --light: #f4f7f6; --white: #ffffff; }
-        body { font-family: 'Segoe UI', sans-serif; background: var(--light); margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--light); margin: 0; padding: 0; }
         .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
         .hidden { display: none !important; }
         .card { background: var(--white); padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); margin-bottom: 20px; }
         input, select, button { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; }
-        button { background: var(--secondary); color: white; border: none; cursor: pointer; font-weight: 600; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 10px; background: white; border-radius: 8px; }
-        .nav-tabs { display: flex; gap: 10px; margin-bottom: 20px; }
-        .tab-btn { background: #eee; padding: 10px 20px; border-radius: 20px; width: auto; }
+        button { background: var(--secondary); color: white; border: none; cursor: pointer; font-weight: 600; transition: 0.3s; }
+        button:hover { opacity: 0.9; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 15px; background: white; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .nav-tabs { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .tab-btn { background: #eee; color: #666; padding: 10px 20px; border-radius: 20px; width: auto; }
         .tab-btn.active { background: var(--secondary); color: white; }
         .input-group { display: flex; gap: 10px; }
         .input-group input { flex: 1; }
-        .admin-table { width: 100%; border-collapse: collapse; margin-top: 15px; background: white; }
-        .admin-table th, .admin-table td { border: 1px solid #ddd; padding: 12px; text-align: center; }
-        .week-card { background: white; margin-bottom: 10px; border-radius: 8px; border-left: 5px solid var(--secondary); }
+        .admin-table { width: 100%; border-collapse: collapse; margin-top: 15px; background: white; font-size: 13px; }
+        .admin-table th, .admin-table td { border: 1px solid #ddd; padding: 10px; text-align: center; }
+        .admin-table th { background: #f8f9fa; }
+        .week-card { background: white; margin-bottom: 10px; border-radius: 8px; border-left: 5px solid var(--secondary); box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
         .week-header { padding: 15px; cursor: pointer; display: flex; justify-content: space-between; font-weight: bold; }
         .week-content { padding: 15px; border-top: 1px solid #eee; }
         .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 1000; }
-        .modal-content { background: white; width: 90%; max-width: 800px; padding: 25px; border-radius: 12px; max-height: 85vh; overflow-y: auto; position: relative; }
+        .modal-content { background: white; width: 95%; max-width: 900px; padding: 25px; border-radius: 12px; max-height: 90vh; overflow-y: auto; position: relative; }
     </style>
 </head>
 <body>
     <div class="container">
         <section id="auth-section" class="card">
-            <h2 style="text-align:center">Sadhana Tracker</h2>
+            <h2 style="text-align:center; color: var(--primary);">Sadhana Tracker</h2>
             <form id="login-form">
                 <input type="email" id="login-email" placeholder="Email" required>
                 <input type="password" id="login-password" placeholder="Password" required>
@@ -63,9 +65,9 @@
             <div class="header">
                 <div>
                     <strong id="user-display-name"></strong>
-                    <br><button onclick="openProfileEdit()" style="width:auto; padding:2px 10px; font-size:11px; margin:0">Edit Profile</button>
+                    <br><button onclick="openProfileEdit()" style="width:auto; padding:2px 10px; font-size:11px; margin-top:5px; background: #95a5a6;">Edit Profile</button>
                 </div>
-                <button id="logout-btn" style="width:auto; padding:5px 15px; background:var(--danger)">Logout</button>
+                <button id="logout-btn" style="width:auto; padding:8px 20px; background:var(--danger)">Logout</button>
             </div>
 
             <div class="nav-tabs">
@@ -77,7 +79,7 @@
             <div id="sadhana-tab" class="tab-content">
                 <div class="card">
                     <form id="sadhana-form">
-                        <label>Date (YYYY-MM-DD):</label>
+                        <label>Date:</label>
                         <select id="sadhana-date" required></select>
 
                         <label>Bed Time (Yesterday):</label>
@@ -91,28 +93,28 @@
 
                         <label>Reading (Pathan) - Hrs & Mins:</label>
                         <div class="input-group">
-                            <input type="number" id="reading-hrs" placeholder="Hrs" required min="0">
-                            <input type="number" id="reading-mins" placeholder="Mins" required min="0" max="59">
+                            <input type="number" id="reading-hrs" placeholder="Hrs" required min="0" value="0">
+                            <input type="number" id="reading-mins" placeholder="Mins" required min="0" max="59" value="0">
                         </div>
 
                         <label>Hearing (Shravan) - Hrs & Mins:</label>
                         <div class="input-group">
-                            <input type="number" id="hearing-hrs" placeholder="Hrs" required min="0">
-                            <input type="number" id="hearing-mins" placeholder="Mins" required min="0" max="59">
+                            <input type="number" id="hearing-hrs" placeholder="Hrs" required min="0" value="0">
+                            <input type="number" id="hearing-mins" placeholder="Mins" required min="0" max="59" value="0">
                         </div>
 
                         <div id="service-area" class="hidden">
                             <label>Service (Seva) - Hrs & Mins:</label>
                             <div class="input-group">
-                                <input type="number" id="service-hrs" placeholder="Hrs" min="0">
-                                <input type="number" id="service-mins" placeholder="Mins" min="0" max="59">
+                                <input type="number" id="service-hrs" placeholder="Hrs" min="0" value="0">
+                                <input type="number" id="service-mins" placeholder="Mins" min="0" max="59" value="0">
                             </div>
                         </div>
 
                         <label>Day Sleep (Mins):</label>
                         <input type="number" id="day-sleep-minutes" value="0" required>
 
-                        <button type="submit" id="submit-btn">Submit Sadhana</button>
+                        <button type="submit" id="submit-btn" style="background: var(--success); margin-top: 15px;">Submit Sadhana</button>
                     </form>
                 </div>
             </div>
@@ -124,14 +126,14 @@
 
             <div id="admin-tab" class="tab-content hidden">
                 <div style="display:flex; gap:10px; margin-bottom:15px">
-                    <button onclick="downloadMasterReport()" style="background:var(--success)">Download Master Excel</button>
+                    <button onclick="downloadMasterReport()" style="background:var(--success)">Download Master Comparative Excel</button>
                 </div>
                 <div class="card" style="overflow-x:auto">
-                    <h3>4-Week Weekly Scores</h3>
+                    <h3>4-Week Performance (%)</h3>
                     <div id="admin-comparative-reports-container"></div>
                 </div>
                 <div class="card">
-                    <h3>All Users</h3>
+                    <h3>All Registered Users</h3>
                     <div id="admin-users-list"></div>
                 </div>
             </div>
@@ -140,8 +142,8 @@
 
     <div id="user-report-modal" class="modal hidden">
         <div class="modal-content">
-            <span onclick="closeUserModal()" style="position:absolute; right:20px; cursor:pointer; font-size:24px">&times;</span>
-            <h2 id="modal-user-name"></h2>
+            <span onclick="closeUserModal()" style="position:absolute; right:20px; top:20px; cursor:pointer; font-size:24px; font-weight:bold;">&times;</span>
+            <h2 id="modal-user-name" style="margin-top:0"></h2>
             <div id="modal-report-container"></div>
         </div>
     </div>
