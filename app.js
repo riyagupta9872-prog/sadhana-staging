@@ -36,7 +36,7 @@ function getNRData(date) {
     };
 }
 
-// --- 3. REPORTS UI (FIXED: Added Day Sleep Marks & Dynamic Highlighting) ---
+// --- 3. REPORTS UI ---
 function loadReports(userId, containerId) {
     const container = document.getElementById(containerId);
     if (!container) return;
@@ -102,7 +102,7 @@ function loadReports(userId, containerId) {
     });
 }
 
-// --- 4. EXCEL DOWNLOADS (Updated with Day Sleep Marks) ---
+// --- 4. EXCEL DOWNLOADS (Updated with Weekly % Logic) ---
 document.getElementById('user-download-btn').onclick = () => {
     if(currentUser && userProfile) downloadUserExcel(currentUser.uid, userProfile.name);
 };
@@ -136,12 +136,17 @@ window.downloadMasterReport = async () => {
         }
         weeks.reverse();
         const usersSnap = await db.collection('users').get();
-        const rows = [["User Name", "Category", ...weeks.map(w => w.label)]];
+        const rows = [["User Name", "Category", ...weeks.map(w => w.label + " (%)")]];
+        
         for (const uDoc of usersSnap.docs) {
             const u = uDoc.data();
             const sSnap = await uDoc.ref.collection('sadhana').get();
             const sEntries = sSnap.docs.map(d => ({ date: d.id, score: d.data().totalScore || 0 }));
-            const userRow = [u.name, u.chantingCategory || 'N/A'];
+            const userRow = [u.name, u.chantingCategory || 'Level-1'];
+            
+            const isL12 = userRow[1].includes("Level-1") || userRow[1].includes("Level-2");
+            const weeklyMax = isL12 ? 770 : 1120;
+
             weeks.forEach(w => {
                 let weekTotal = 0; let curr = new Date(w.sunStr);
                 for (let i = 0; i < 7; i++) {
@@ -150,7 +155,8 @@ window.downloadMasterReport = async () => {
                     weekTotal += entry ? entry.score : -30;
                     curr.setDate(curr.getDate() + 1);
                 }
-                userRow.push(weekTotal);
+                const weeklyPercent = Math.round((weekTotal / weeklyMax) * 100);
+                userRow.push(weeklyPercent + "%");
             });
             rows.push(userRow);
         }
@@ -161,7 +167,7 @@ window.downloadMasterReport = async () => {
     } catch (e) { alert("Master Download Failed"); }
 };
 
-// --- 5. FORM SUBMISSIONS (LOCKED SCORING ENGINE) ---
+// --- 5. FORM SUBMISSIONS ---
 document.getElementById('sadhana-form').onsubmit = async (e) => {
     e.preventDefault();
     const date = document.getElementById('sadhana-date').value;
@@ -175,20 +181,17 @@ document.getElementById('sadhana-form').onsubmit = async (e) => {
     const serviceMins = (parseInt(document.getElementById('service-hrs')?.value) || 0) * 60 + (parseInt(document.getElementById('service-mins')?.value) || 0);
     const dsMins = parseInt(document.getElementById('day-sleep-minutes').value) || 0;
 
-    // REPLACE WITH THIS FIXED BLOCK:
-const t2m = (t, isSleep = false) => {
-    if (!t || t === "NR") return 9999;
-    let [h, m] = t.split(':').map(Number);
-    
-    // Sirf Sleep ke liye 12AM-3AM ko 24+ maanna hai
-    // Wakeup ke liye 3AM ko 3:00 hi rehne dena hai
-    if (isSleep && h >= 0 && h <= 3) h += 24; 
-    
-    return h * 60 + m;
-};
+    // Helper with isSleep flag to handle 12 AM logic correctly
+    const t2m = (t, isSleep = false) => {
+        if (!t || t === "NR") return 9999;
+        let [h, m] = t.split(':').map(Number);
+        if (isSleep && h >= 0 && h <= 3) h += 24; 
+        return h * 60 + m;
+    };
+
     const scores = { sleep: -5, wakeup: -5, chanting: -5, reading: 0, hearing: 0, service: 0, daySleep: 0 };
 
-    // Nidra
+    // Nidra calculation
     const sMin = t2m(sleepVal, true);
     if (sMin <= 1350) scores.sleep = 25;
     else if (sMin <= 1355) scores.sleep = 20;
@@ -198,7 +201,7 @@ const t2m = (t, isSleep = false) => {
     else if (sMin <= 1375) scores.sleep = 0;
     else scores.sleep = -5;
 
-    // Jagran
+    // Jagran calculation
     const wMin = t2m(wakeVal, false);
     const isLevel1or2 = level.includes("Level-1") || level.includes("Level-2");
     const targetWake = isLevel1or2 ? 365 : 305;
@@ -210,9 +213,9 @@ const t2m = (t, isSleep = false) => {
     else if (wMin <= targetWake + 25) scores.wakeup = 0;
     else scores.wakeup = -5;
 
-    // Chanting
+    // Chanting calculation
     if (chantVal) {
-        const cMin = t2m(chantVal);
+        const cMin = t2m(chantVal, false);
         if (cMin <= 540) scores.chanting = 25;
         else if (cMin <= 570) scores.chanting = 20;
         else if (cMin <= 660) scores.chanting = 15;
@@ -222,10 +225,8 @@ const t2m = (t, isSleep = false) => {
         else scores.chanting = -5;
     }
 
-    // Day Sleep
     scores.daySleep = (dsMins <= 60) ? 10 : -5;
 
-    // Reading / Hearing / Service
     const getDurationScore = (mins, isL4 = false) => {
         const target = isL4 ? 40 : 30;
         if (mins >= target) return 25;
@@ -326,13 +327,18 @@ async function loadAdminPanel() {
     }
     weeks.reverse();
     const usersSnap = await db.collection('users').get();
-    let tableHtml = `<table class="admin-table"><thead><tr><th>User</th><th>Cat</th>${weeks.map(w => `<th>${w.label}</th>`).join('')}</tr></thead><tbody>`;
+    let tableHtml = `<table class="admin-table"><thead><tr><th>User</th><th>Cat</th>${weeks.map(w => `<th>${w.label} (%)</th>`).join('')}</tr></thead><tbody>`;
     usersList.innerHTML = '';
+    
     for (const uDoc of usersSnap.docs) {
         const u = uDoc.data();
         tableHtml += `<tr><td>${u.name}</td><td>${u.chantingCategory || 'N/A'}</td>`;
         const sSnap = await uDoc.ref.collection('sadhana').get();
         const sEntries = sSnap.docs.map(d => ({ date: d.id, score: d.data().totalScore || 0 }));
+        
+        const isL12 = (u.chantingCategory || "").includes("Level-1") || (u.chantingCategory || "").includes("Level-2");
+        const weeklyMax = isL12 ? 770 : 1120;
+
         weeks.forEach(w => {
             let weekTotal = 0; let curr = new Date(w.sunStr);
             for (let i = 0; i < 7; i++) {
@@ -341,7 +347,8 @@ async function loadAdminPanel() {
                 weekTotal += entry ? entry.score : -30;
                 curr.setDate(curr.getDate() + 1);
             }
-            tableHtml += `<td>${weekTotal}</td>`;
+            const weeklyPercent = Math.round((weekTotal / weeklyMax) * 100);
+            tableHtml += `<td>${weeklyPercent}%</td>`;
         });
         tableHtml += `</tr>`;
 
