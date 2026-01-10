@@ -1,4 +1,4 @@
-// --- 1. FIREBASE CONFIG ---
+// --- 1. CONFIG ---
 const firebaseConfig = {
     apiKey: "AIzaSyDbRy8ZMJAWeTyZVnTphwRIei6jAckagjA",
     authDomain: "sadhana-tracker-b65ff.firebaseapp.com",
@@ -11,7 +11,7 @@ if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth(), db = firebase.firestore();
 let currentUser = null, userProfile = null, activeListener = null;
 
-// --- 2. TIME & DATE HELPERS ---
+// --- 2. HELPERS ---
 const t2m = (t, isSleep = false) => {
     if (!t || t === "NR") return 9999;
     let [h, m] = t.split(':').map(Number);
@@ -28,10 +28,7 @@ function getWeekInfo(dateStr) {
         const month = date.toLocaleString('en-GB', { month: 'short' });
         return `${day} ${month}`;
     };
-    return { 
-        sunStr: sun.toISOString().split('T')[0], 
-        label: `${fmt(sun)} to ${fmt(sat)}_${sun.getFullYear()}` 
-    };
+    return { sunStr: sun.toISOString().split('T')[0], label: `${fmt(sun)} to ${fmt(sat)}_${sun.getFullYear()}` };
 }
 
 function getNRData(date) {
@@ -43,7 +40,7 @@ function getNRData(date) {
     };
 }
 
-// --- 3. CORE AUTH LOGIC ---
+// --- 3. AUTH & PROFILE ---
 auth.onAuthStateChanged(async (user) => {
     if (user) {
         currentUser = user;
@@ -53,36 +50,29 @@ auth.onAuthStateChanged(async (user) => {
             document.getElementById('user-display-name').textContent = `${userProfile.name} (${userProfile.chantingCategory})`;
             if (userProfile.role === 'admin') document.getElementById('admin-tab-btn').classList.remove('hidden');
             showSection('dashboard'); switchTab('sadhana'); setupDateSelect();
-        } else {
-            showSection('profile');
-        }
-    } else {
-        showSection('auth');
-    }
+        } else showSection('profile');
+    } else showSection('auth');
 });
 
-// --- 4. DATA DOWNLOAD LOGIC (FIXED) ---
+// --- 4. EXCEL DOWNLOADS (FIXED SHEET NAMES) ---
 window.downloadUserExcel = async (userId, userName) => {
     try {
-        if (typeof XLSX === 'undefined') { alert("Excel library not ready. Refresh page."); return; }
+        if (typeof XLSX === 'undefined') { alert("Excel Library Error. Please reload."); return; }
         const snap = await db.collection('users').doc(userId).collection('sadhana').orderBy('submittedAt', 'asc').get();
-        if (snap.empty) { alert("No records found."); return; }
-        
+        if (snap.empty) { alert("No data to download."); return; }
+
         const rows = [["Date", "Bed", "M", "Wake", "M", "Chant", "M", "Read(m)", "M", "Hear(m)", "M", "Seva(m)", "M", "Day Sleep", "DS M", "Total", "%"]];
         snap.forEach(doc => {
             const e = doc.data();
-            rows.push([
-                doc.id, e.sleepTime, e.scores?.sleep, e.wakeupTime, e.scores?.wakeup, 
-                e.chantingTime, e.scores?.chanting, e.readingMinutes, e.scores?.reading, 
-                e.hearingMinutes, e.scores?.hearing, e.serviceMinutes||0, e.scores?.service, 
-                e.daySleepMinutes || 0, e.scores?.daySleep, e.totalScore, e.dayPercent+"%"
-            ]);
+            rows.push([doc.id, e.sleepTime, e.scores?.sleep, e.wakeupTime, e.scores?.wakeup, e.chantingTime, e.scores?.chanting, e.readingMinutes, e.scores?.reading, e.hearingMinutes, e.scores?.hearing, e.serviceMinutes||0, e.scores?.service, e.daySleepMinutes, e.scores?.daySleep, e.totalScore, e.dayPercent+"%"]);
         });
+
         const ws = XLSX.utils.aoa_to_sheet(rows);
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "History");
-        XLSX.writeFile(wb, `${userName.replace(/\s/g, '_')}_Report.xlsx`);
-    } catch (e) { alert("Download failed: " + e.message); }
+        // Changed sheet name from 'History' to 'Sadhana_Log' to avoid system reservation issues
+        XLSX.utils.book_append_sheet(wb, ws, "Sadhana_Log");
+        XLSX.writeFile(wb, `${userName.replace(/\s+/g, '_')}_Sadhana.xlsx`);
+    } catch (e) { alert("Download Failed: " + e.message); }
 };
 
 window.downloadMasterReport = async () => {
@@ -112,70 +102,64 @@ window.downloadMasterReport = async () => {
                     weekTotal += entry ? entry.score : -30;
                     curr.setDate(curr.getDate() + 1);
                 }
-                const weeklyPercent = Math.round((weekTotal / weeklyMax) * 100);
-                userRow.push(weeklyPercent + "%");
+                userRow.push(Math.round((weekTotal / weeklyMax) * 100) + "%");
             });
             rows.push(userRow);
         }
         const ws = XLSX.utils.aoa_to_sheet(rows);
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Master");
-        XLSX.writeFile(wb, "Master_Report.xlsx");
-    } catch (e) { alert("Master Download Failed"); }
+        XLSX.utils.book_append_sheet(wb, ws, "Comparative_Data");
+        XLSX.writeFile(wb, "Master_Sadhana_Report.xlsx");
+    } catch (e) { alert("Master Download Error"); }
 };
 
-// --- 5. SCORING LOGIC ---
+// --- 5. SUBMISSION & SCORING ---
 document.getElementById('sadhana-form').onsubmit = async (e) => {
     e.preventDefault();
     const date = document.getElementById('sadhana-date').value;
     const level = userProfile.chantingCategory || "Level-1";
-    const sleepVal = document.getElementById('sleep-time').value;
-    const wakeVal = document.getElementById('wakeup-time').value;
-    const chantVal = document.getElementById('chanting-time').value;
-    const rMins = (parseInt(document.getElementById('reading-hrs').value) || 0) * 60 + (parseInt(document.getElementById('reading-mins').value) || 0);
-    const hMins = (parseInt(document.getElementById('hearing-hrs').value) || 0) * 60 + (parseInt(document.getElementById('hearing-mins').value) || 0);
-    const sMins = (parseInt(document.getElementById('service-hrs')?.value) || 0) * 60 + (parseInt(document.getElementById('service-mins')?.value) || 0);
-    const dsMins = parseInt(document.getElementById('day-sleep-minutes').value) || 0;
+    const slp = document.getElementById('sleep-time').value;
+    const wak = document.getElementById('wakeup-time').value;
+    const chn = document.getElementById('chanting-time').value;
+    const rMin = (parseInt(document.getElementById('reading-hrs').value) || 0) * 60 + (parseInt(document.getElementById('reading-mins').value) || 0);
+    const hMin = (parseInt(document.getElementById('hearing-hrs').value) || 0) * 60 + (parseInt(document.getElementById('hearing-mins').value) || 0);
+    const sMin = (parseInt(document.getElementById('service-hrs')?.value) || 0) * 60 + (parseInt(document.getElementById('service-mins')?.value) || 0);
+    const dsMin = parseInt(document.getElementById('day-sleep-minutes').value) || 0;
 
-    const scores = { sleep: -5, wakeup: -5, chanting: -5, reading: -5, hearing: -5, service: -5, daySleep: 0 };
+    const sc = { sleep: -5, wakeup: -5, chanting: -5, reading: -5, hearing: -5, service: -5, daySleep: 0 };
 
-    // Nidra
-    const sMin = t2m(sleepVal, true);
-    if (sMin <= 1350) scores.sleep = 25;
-    else if (sMin <= 1355) scores.sleep = 20;
-    else if (sMin <= 1360) scores.sleep = 15;
-    else if (sMin <= 1365) scores.sleep = 10;
-    else if (sMin <= 1370) scores.sleep = 5;
-    else if (sMin <= 1375) scores.sleep = 0;
+    const slpM = t2m(slp, true);
+    if (slpM <= 1350) sc.sleep = 25;
+    else if (slpM <= 1355) sc.sleep = 20;
+    else if (slpM <= 1360) sc.sleep = 15;
+    else if (slpM <= 1365) sc.sleep = 10;
+    else if (slpM <= 1370) sc.sleep = 5;
+    else if (slpM <= 1375) sc.sleep = 0;
 
-    // Wakeup
-    const wMin = t2m(wakeVal, false);
+    const wakM = t2m(wak, false);
     const isL12 = level.includes("Level-1") || level.includes("Level-2");
     const targetW = isL12 ? 365 : 305;
-    if (wMin <= targetW) scores.wakeup = 25;
-    else if (wMin <= targetW + 5) scores.wakeup = 20;
-    else if (wMin <= targetW + 10) scores.wakeup = 15;
-    else if (wMin <= targetW + 15) scores.wakeup = 10;
-    else if (wMin <= targetW + 20) scores.wakeup = 5;
-    else if (wMin <= targetW + 25) scores.wakeup = 0;
+    if (wakM <= targetW) sc.wakeup = 25;
+    else if (wakM <= targetW+5) sc.wakeup = 20;
+    else if (wakM <= targetW+10) sc.wakeup = 15;
+    else if (wakM <= targetW+15) sc.wakeup = 10;
+    else if (wakM <= targetW+20) sc.wakeup = 5;
+    else if (wakM <= targetW+25) sc.wakeup = 0;
 
-    // Chanting
-    const cMin = t2m(chantVal, false);
-    if (cMin <= 540) scores.chanting = 25;
-    else if (cMin <= 570) scores.chanting = 20;
-    else if (cMin <= 660) scores.chanting = 15;
-    else if (cMin <= 870) scores.chanting = 10;
-    else if (cMin <= 1020) scores.chanting = 5;
-    else if (cMin <= 1140) scores.chanting = 0;
+    const chnM = t2m(chn, false);
+    if (chnM <= 540) sc.chanting = 25;
+    else if (chnM <= 570) sc.chanting = 20;
+    else if (chnM <= 660) sc.chanting = 15;
+    else if (chnM <= 870) sc.chanting = 10;
+    else if (chnM <= 1020) sc.chanting = 5;
+    else if (chnM <= 1140) sc.chanting = 0;
 
-    // Day Sleep
-    scores.daySleep = (dsMins <= 60) ? 10 : -5;
+    sc.daySleep = (dsMin <= 60) ? 10 : -5;
 
-    // Activity
-    const getDurScore = (m, isL4 = false) => {
-        const target = isL4 ? 40 : 30;
-        if (m >= target) return 25;
-        if (m >= (target - 10)) return 20;
+    const getScore = (m, isL4) => {
+        const tgt = isL4 ? 40 : 30;
+        if (m >= tgt) return 25;
+        if (m >= tgt-10) return 20;
         if (m >= 20) return 15;
         if (m >= 15) return 10;
         if (m >= 10) return 5;
@@ -184,45 +168,65 @@ document.getElementById('sadhana-form').onsubmit = async (e) => {
     };
 
     const isL4 = level.includes("Level-4");
-    const rRaw = getDurScore(rMins, isL4);
-    const hRaw = getDurScore(hMins, isL4);
-    const sRaw = getDurScore(sMins, false);
+    const rRaw = getScore(rMin, isL4);
+    const hRaw = getScore(hMin, isL4);
+    const sRaw = getScore(sMin, false);
 
-    let activityTotal = 0; let maxMarks = 160;
+    let actScore = 0; let maxM = 160;
     if (isL12) {
-        scores.reading = Math.max(0, rRaw);
-        scores.hearing = Math.max(0, hRaw);
-        scores.service = 0;
-        activityTotal = Math.max(scores.reading, scores.hearing);
-        maxMarks = 110;
+        sc.reading = Math.max(0, rRaw); sc.hearing = Math.max(0, hRaw); sc.service = 0;
+        actScore = Math.max(sc.reading, sc.hearing); maxM = 110;
     } else {
-        scores.reading = rRaw; scores.hearing = hRaw; scores.service = sRaw;
-        activityTotal = scores.reading + scores.hearing + scores.service;
+        sc.reading = rRaw; sc.hearing = hRaw; sc.service = sRaw;
+        actScore = sc.reading + sc.hearing + sc.service;
     }
 
-    const total = scores.sleep + scores.wakeup + scores.chanting + scores.daySleep + activityTotal;
+    const total = sc.sleep + sc.wakeup + sc.chanting + sc.daySleep + actScore;
     const entry = {
-        sleepTime: sleepVal, wakeupTime: wakeVal, chantingTime: chantVal,
-        readingMinutes: rMins, hearingMinutes: hMins, serviceMinutes: sMins, daySleepMinutes: dsMins,
-        scores: scores, totalScore: total, dayPercent: Math.round((total/maxMarks)*100),
+        sleepTime: slp, wakeupTime: wak, chantingTime: chn,
+        readingMinutes: rMin, hearingMinutes: hMin, serviceMinutes: sMin, daySleepMinutes: dsMin,
+        scores: sc, totalScore: total, dayPercent: Math.round((total/maxM)*100),
         levelAtSubmission: level, submittedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
 
     await db.collection('users').doc(currentUser.uid).collection('sadhana').doc(date).set(entry);
-    alert("Submitted! Score: " + total);
+    alert("Success! Score: " + total);
     switchTab('reports');
 };
 
-// --- 6. UI & ADMIN FUNCTIONS ---
-window.switchTab = (t) => {
-    document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById(t + '-tab').classList.remove('hidden');
-    const btn = document.querySelector(`button[onclick*="switchTab('${t}')"]`);
-    if (btn) btn.classList.add('active');
-    if (t === 'reports') loadReports(currentUser.uid, 'weekly-reports-container');
-    if (t === 'admin') loadAdminPanel();
-};
+// --- 6. UI & ADMIN (NR COLOR ADDED BACK) ---
+function loadReports(userId, containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    if (activeListener) activeListener();
+    activeListener = db.collection('users').doc(userId).collection('sadhana').orderBy('submittedAt', 'desc').limit(20).onSnapshot(snap => {
+        const entries = {}; snap.forEach(doc => entries[doc.id] = doc.data());
+        const weeks = {};
+        for (let i = 0; i < 14; i++) {
+            const d = new Date(); d.setDate(d.getDate() - i);
+            const ds = d.toISOString().split('T')[0];
+            const w = getWeekInfo(ds);
+            if (!weeks[w.sunStr]) weeks[w.sunStr] = { range: w.label, data: [], total: 0 };
+            const dayData = entries[ds] ? { id: ds, ...entries[ds] } : getNRData(ds);
+            weeks[w.sunStr].data.push(dayData); weeks[w.sunStr].total += dayData.totalScore;
+        }
+        container.innerHTML = '';
+        Object.keys(weeks).sort((a,b) => b.localeCompare(a)).forEach(key => {
+            const week = weeks[key];
+            const div = document.createElement('div');
+            div.className = 'week-card';
+            div.innerHTML = `<div class="week-header" onclick="this.nextElementSibling.classList.toggle('hidden')"><span>📅 ${week.range}</span><strong>Score: ${week.total} ▼</strong></div>
+                <div class="week-content hidden" style="overflow-x:auto;"><table class="admin-table">
+                <thead><tr><th>Date</th><th>Bed</th><th>M</th><th>Wake</th><th>M</th><th>Chant</th><th>M</th><th>Read</th><th>M</th><th>Hear</th><th>M</th><th>Total</th><th>%</th></tr></thead>
+                <tbody>${week.data.sort((a,b) => b.id.localeCompare(a.id)).map(e => {
+                    // NR RED COLOR LOGIC HERE
+                    const style = e.sleepTime === 'NR' ? 'style="background:#fff5f5; color:red;"' : '';
+                    return `<tr ${style}><td>${e.id.split('-').slice(1).join('/')}</td><td>${e.sleepTime}</td><td>${e.scores?.sleep}</td><td>${e.wakeupTime}</td><td>${e.scores?.wakeup}</td><td>${e.chantingTime}</td><td>${e.scores?.chanting}</td><td>${e.readingMinutes}m</td><td>${e.scores?.reading}</td><td>${e.hearingMinutes}m</td><td>${e.scores?.hearing}</td><td>${e.totalScore}</td><td>${e.dayPercent}%</td></tr>`;
+                }).join('')}</tbody></table></div>`;
+            container.appendChild(div);
+        });
+    });
+}
 
 async function loadAdminPanel() {
     const tableContainer = document.getElementById('admin-comparative-reports-container');
@@ -271,42 +275,23 @@ async function loadAdminPanel() {
 }
 
 window.handleAdminChange = async (uid, newRole) => {
-    if (confirm(`Are you sure you want to change this user to ${newRole}?`)) {
-        if (confirm("FINAL CONFIRMATION: Process this change?")) {
+    if (confirm(`Change user to ${newRole}?`)) {
+        if (confirm("Final confirmation?")) {
             await db.collection('users').doc(uid).update({ role: newRole });
-            alert("Role updated!"); loadAdminPanel();
+            alert("Updated!"); loadAdminPanel();
         }
     }
 };
 
-function loadReports(userId, containerId) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-    if (activeListener) activeListener();
-    activeListener = db.collection('users').doc(userId).collection('sadhana').orderBy('submittedAt', 'desc').limit(20).onSnapshot(snap => {
-        const entries = {}; snap.forEach(doc => entries[doc.id] = doc.data());
-        const weeks = {};
-        for (let i = 0; i < 14; i++) {
-            const d = new Date(); d.setDate(d.getDate() - i);
-            const ds = d.toISOString().split('T')[0];
-            const w = getWeekInfo(ds);
-            if (!weeks[w.sunStr]) weeks[w.sunStr] = { range: w.label, data: [], total: 0 };
-            const dayData = entries[ds] ? { id: ds, ...entries[ds] } : getNRData(ds);
-            weeks[w.sunStr].data.push(dayData); weeks[w.sunStr].total += dayData.totalScore;
-        }
-        container.innerHTML = '';
-        Object.keys(weeks).sort((a,b) => b.localeCompare(a)).forEach(key => {
-            const week = weeks[key];
-            const div = document.createElement('div');
-            div.className = 'week-card';
-            div.innerHTML = `<div class="week-header" onclick="this.nextElementSibling.classList.toggle('hidden')"><span>📅 ${week.range}</span><strong>Score: ${week.total} ▼</strong></div>
-                <div class="week-content hidden" style="overflow-x:auto;"><table class="admin-table">
-                <thead><tr><th>Date</th><th>Bed</th><th>M</th><th>Wake</th><th>M</th><th>Chant</th><th>M</th><th>Read</th><th>M</th><th>Hear</th><th>M</th><th>Total</th><th>%</th></tr></thead>
-                <tbody>${week.data.sort((a,b) => b.id.localeCompare(a.id)).map(e => `<tr><td>${e.id.split('-').slice(1).join('/')}</td><td>${e.sleepTime}</td><td>${e.scores?.sleep}</td><td>${e.wakeupTime}</td><td>${e.scores?.wakeup}</td><td>${e.chantingTime}</td><td>${e.scores?.chanting}</td><td>${e.readingMinutes}m</td><td>${e.scores?.reading}</td><td>${e.hearingMinutes}m</td><td>${e.scores?.hearing}</td><td>${e.totalScore}</td><td>${e.dayPercent}%</td></tr>`).join('')}</tbody></table></div>`;
-            container.appendChild(div);
-        });
-    });
-}
+window.switchTab = (t) => {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(t + '-tab').classList.remove('hidden');
+    const btn = document.querySelector(`button[onclick*="switchTab('${t}')"]`);
+    if (btn) btn.classList.add('active');
+    if (t === 'reports') loadReports(currentUser.uid, 'weekly-reports-container');
+    if (t === 'admin') loadAdminPanel();
+};
 
 function showSection(id) {
     document.querySelectorAll('section').forEach(s => s.classList.add('hidden'));
