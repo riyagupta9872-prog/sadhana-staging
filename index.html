@@ -7,7 +7,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
-    <script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
     <style>
         :root { --primary: #2c3e50; --secondary: #3498db; --success: #27ae60; --danger: #e74c3c; --light: #f4f7f6; --white: #ffffff; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--light); margin: 0; padding: 0; }
@@ -36,7 +36,7 @@
 <body>
     <div class="container">
         <section id="auth-section" class="card">
-            <h2 style="text-align:center; color: var(--primary);">Sadhana Tracker</h2>
+            <h2 style="text-align:center;">Sadhana Tracker</h2>
             <form id="login-form">
                 <input type="email" id="login-email" placeholder="Email" required>
                 <input type="password" id="login-password" placeholder="Password" required>
@@ -79,30 +79,20 @@
             <div id="sadhana-tab" class="tab-content">
                 <div class="card">
                     <form id="sadhana-form">
-                        <label>Date:</label>
-                        <select id="sadhana-date" required></select>
-
-                        <label>Bed Time (Yesterday):</label>
-                        <input type="time" id="sleep-time" required>
-
-                        <label>Wake Up Time:</label>
-                        <input type="time" id="wakeup-time" required>
-
-                        <label>Chanting (Last round by):</label>
-                        <input type="time" id="chanting-time" required>
-
+                        <label>Date:</label><select id="sadhana-date" required></select>
+                        <label>Bed Time (Yesterday):</label><input type="time" id="sleep-time" required>
+                        <label>Wake Up Time:</label><input type="time" id="wakeup-time" required>
+                        <label>Chanting (Last round by):</label><input type="time" id="chanting-time" required>
                         <label>Reading (Pathan) - Hrs & Mins:</label>
                         <div class="input-group">
                             <input type="number" id="reading-hrs" placeholder="Hrs" required min="0" value="0">
                             <input type="number" id="reading-mins" placeholder="Mins" required min="0" max="59" value="0">
                         </div>
-
                         <label>Hearing (Shravan) - Hrs & Mins:</label>
                         <div class="input-group">
                             <input type="number" id="hearing-hrs" placeholder="Hrs" required min="0" value="0">
                             <input type="number" id="hearing-mins" placeholder="Mins" required min="0" max="59" value="0">
                         </div>
-
                         <div id="service-area" class="hidden">
                             <label>Service (Seva) - Hrs & Mins:</label>
                             <div class="input-group">
@@ -110,11 +100,8 @@
                                 <input type="number" id="service-mins" placeholder="Mins" min="0" max="59" value="0">
                             </div>
                         </div>
-
-                        <label>Day Sleep (Mins):</label>
-                        <input type="number" id="day-sleep-minutes" value="0" required>
-
-                        <button type="submit" id="submit-btn" style="background: var(--success); margin-top: 15px;">Submit Sadhana</button>
+                        <label>Day Sleep (Mins):</label><input type="number" id="day-sleep-minutes" value="0" required>
+                        <button type="submit" style="background: var(--success); margin-top: 15px;">Submit Sadhana</button>
                     </form>
                 </div>
             </div>
@@ -133,7 +120,7 @@
                     <div id="admin-comparative-reports-container"></div>
                 </div>
                 <div class="card">
-                    <h3>All Registered Users</h3>
+                    <h3>User Management</h3>
                     <div id="admin-users-list"></div>
                 </div>
             </div>
