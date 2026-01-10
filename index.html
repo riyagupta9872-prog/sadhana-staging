@@ -111,8 +111,8 @@
             </div>
 
             <div id="reports-tab" class="tab-content hidden">
-                <button id="user-download-btn" style="background:var(--success); margin-bottom:15px">Download My History (Excel)</button>
-                <div id="weekly-reports-container"></div>
+                <button onclick="downloadUserExcel(currentUser.uid, userProfile.name)" style="background:var(--success); margin-bottom:15px">Download My History (Excel)</button>       
+                              <div id="weekly-reports-container"></div>
             </div>
 
             <div id="admin-tab" class="tab-content hidden">
