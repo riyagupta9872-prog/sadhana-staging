@@ -83,23 +83,27 @@
                         <label>Bed Time (Yesterday):</label><input type="time" id="sleep-time" required>
                         <label>Wake Up Time:</label><input type="time" id="wakeup-time" required>
                         <label>Chanting (Last round by):</label><input type="time" id="chanting-time" required>
-                        <label>Reading (Pathan) - Hrs & Mins:</label>
+                        
+                        <label>Reading (Pathan):</label>
                         <div class="input-group">
                             <input type="number" id="reading-hrs" placeholder="Hrs" required min="0" value="0">
                             <input type="number" id="reading-mins" placeholder="Mins" required min="0" max="59" value="0">
                         </div>
-                        <label>Hearing (Shravan) - Hrs & Mins:</label>
+                        
+                        <label>Hearing (Shravan):</label>
                         <div class="input-group">
                             <input type="number" id="hearing-hrs" placeholder="Hrs" required min="0" value="0">
                             <input type="number" id="hearing-mins" placeholder="Mins" required min="0" max="59" value="0">
                         </div>
+
                         <div id="service-area" class="hidden">
-                            <label>Service (Seva) - Hrs & Mins:</label>
+                            <label>Service (Seva):</label>
                             <div class="input-group">
                                 <input type="number" id="service-hrs" placeholder="Hrs" min="0" value="0">
                                 <input type="number" id="service-mins" placeholder="Mins" min="0" max="59" value="0">
                             </div>
                         </div>
+
                         <label>Day Sleep (Mins):</label><input type="number" id="day-sleep-minutes" value="0" required>
                         <button type="submit" style="background: var(--success); margin-top: 15px;">Submit Sadhana</button>
                     </form>
