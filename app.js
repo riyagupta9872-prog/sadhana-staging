@@ -176,20 +176,20 @@ document.getElementById('sadhana-form').onsubmit = async (e) => {
     const dsMins = parseInt(document.getElementById('day-sleep-minutes').value) || 0;
 
     // REPLACE WITH THIS FIXED BLOCK:
-const t2m = (t) => {
+const t2m = (t, isSleep = false) => {
     if (!t || t === "NR") return 9999;
     let [h, m] = t.split(':').map(Number);
     
-    // If hour is 0, 1, 2, or 3 (Midnight to 3:59 AM), 
-    // we add 24 hours to treat it as the end of the previous day.
-    if (h >= 0 && h <= 3) h += 24; 
+    // Sirf Sleep ke liye 12AM-3AM ko 24+ maanna hai
+    // Wakeup ke liye 3AM ko 3:00 hi rehne dena hai
+    if (isSleep && h >= 0 && h <= 3) h += 24; 
     
     return h * 60 + m;
 };
     const scores = { sleep: -5, wakeup: -5, chanting: -5, reading: 0, hearing: 0, service: 0, daySleep: 0 };
 
     // Nidra
-    const sMin = t2m(sleepVal);
+    const sMin = t2m(sleepVal, true);
     if (sMin <= 1350) scores.sleep = 25;
     else if (sMin <= 1355) scores.sleep = 20;
     else if (sMin <= 1360) scores.sleep = 15;
@@ -199,7 +199,7 @@ const t2m = (t) => {
     else scores.sleep = -5;
 
     // Jagran
-    const wMin = t2m(wakeVal);
+    const wMin = t2m(wakeVal, false);
     const isLevel1or2 = level.includes("Level-1") || level.includes("Level-2");
     const targetWake = isLevel1or2 ? 365 : 305;
     if (wMin <= targetWake) scores.wakeup = 25;
