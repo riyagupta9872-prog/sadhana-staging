@@ -40,7 +40,7 @@ function getNRData(date) {
     };
 }
 
-// --- 3. DOWNLOAD LOGIC (TABLE FORMAT UPDATED) ---
+// --- 3. DOWNLOAD LOGIC (CLEAN & FIXED) ---
 window.downloadUserExcel = async (userId, userName) => {
     try {
         if (typeof XLSX === 'undefined') {
@@ -54,17 +54,17 @@ window.downloadUserExcel = async (userId, userName) => {
             return;
         }
 
-        **// 1. PROPER TABLE HEADERS (Like Kishore MTG Sheet)**
-        **const tableData = [**
-            **["Sr No.", "Date", "Bed Time", "M", "Wake Up", "M", "Chant Time", "M", "Read(m)", "Hear(m)", "Seva(m)", "Day Sleep", "Total", "Percentage"]**
-        **];**
+        // 1. PROPER TABLE HEADERS (Like Kishore MTG Sheet)
+        const tableData = [
+            ["Sr No.", "Date", "Bed Time", "M", "Wake Up", "M", "Chant Time", "M", "Read(m)", "Hear(m)", "Seva(m)", "Day Sleep", "Total", "Percentage"]
+        ];
 
-        **// 2. MAPPING DATA INTO ROWS**
-        **let srNo = 1;**
+        // 2. MAPPING DATA INTO ROWS
+        let srNo = 1;
         snap.forEach(doc => {
             const e = doc.data();
             tableData.push([
-                **srNo++,** // Sr No.
+                srNo++,                           // Sr No.
                 doc.id,                           // Date
                 e.sleepTime || "NR",              // Bed Time
                 e.scores?.sleep ?? 0,             // Marks
@@ -81,15 +81,15 @@ window.downloadUserExcel = async (userId, userName) => {
             ]);
         });
 
-        **// 3. CREATE WORKSHEET**
+        // 3. CREATE WORKSHEET
         const worksheet = XLSX.utils.aoa_to_sheet(tableData);
         const workbook = XLSX.utils.book_new();
 
-        **// 4. AUTO-COLUMN WIDTH (Taaki table clean dikhe)**
-        **const wscols = [**
-            **{wch: 6}, {wch: 12}, {wch: 10}, {wch: 5}, {wch: 10},** **{wch: 5}, {wch: 10}, {wch: 5}, {wch: 8}, {wch: 8},** **{wch: 8}, {wch: 10}, {wch: 8}, {wch: 10}**
-        **];**
-        **worksheet['!cols'] = wscols;**
+        // 4. AUTO-COLUMN WIDTH
+        const wscols = [
+            {wch: 6}, {wch: 12}, {wch: 10}, {wch: 5}, {wch: 10}, {wch: 5}, {wch: 10}, {wch: 5}, {wch: 8}, {wch: 8}, {wch: 8}, {wch: 10}, {wch: 8}, {wch: 10}
+        ];
+        worksheet['!cols'] = wscols;
 
         // 5. SAVE FILE
         XLSX.utils.book_append_sheet(workbook, worksheet, "Sadhana_Log");
@@ -112,15 +112,14 @@ window.downloadMasterReport = async () => {
         weeks.reverse();
         const usersSnap = await db.collection('users').get();
         
-        **// Master Table Header**
         const rows = [["Sr No.", "User Name", "Category", ...weeks.map(w => w.label + " (%)")]];
         
-        **let count = 1;**
+        let count = 1;
         for (const uDoc of usersSnap.docs) {
             const u = uDoc.data();
             const sSnap = await uDoc.ref.collection('sadhana').get();
             const sEntries = sSnap.docs.map(d => ({ date: d.id, score: d.data().totalScore || 0 }));
-            const userRow = [**count++**, u.name, u.chantingCategory || 'Level-1'];
+            const userRow = [count++, u.name, u.chantingCategory || 'Level-1'];
             const isL12 = userRow[2].includes("Level-1") || userRow[2].includes("Level-2");
             const weeklyMax = isL12 ? 770 : 1120;
 
@@ -138,10 +137,7 @@ window.downloadMasterReport = async () => {
         }
         const ws = XLSX.utils.aoa_to_sheet(rows);
         const wb = XLSX.utils.book_new();
-        
-        **// Master Column Widths**
-        **ws['!cols'] = [{wch: 6}, {wch: 20}, {wch: 15}, {wch: 15}, {wch: 15}, {wch: 15}, {wch: 15}];**
-
+        ws['!cols'] = [{wch: 6}, {wch: 20}, {wch: 15}, {wch: 15}, {wch: 15}, {wch: 15}, {wch: 15}];
         XLSX.utils.book_append_sheet(wb, ws, "Comparative_Report");
         XLSX.writeFile(wb, "Master_Sadhana_Report.xlsx");
     } catch (e) { alert("Master Download Failed"); }
