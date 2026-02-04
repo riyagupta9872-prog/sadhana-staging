@@ -40,11 +40,11 @@ function getNRData(date) {
     };
 }
 
-// --- 3. DOWNLOAD LOGIC (CLEAN & FIXED) ---
+// --- 3. DOWNLOAD LOGIC (REBUILT) ---
 window.downloadUserExcel = async (userId, userName) => {
     try {
         if (typeof XLSX === 'undefined') {
-            alert("Excel Library not loaded. Please refresh the page.");
+            alert("Excel Library not loaded. Please wait 2 seconds and try again.");
             return;
         }
 
@@ -54,51 +54,32 @@ window.downloadUserExcel = async (userId, userName) => {
             return;
         }
 
-        // 1. PROPER TABLE HEADERS (Like Kishore MTG Sheet)
-        const tableData = [
-            ["Sr No.", "Date", "Bed Time", "M", "Wake Up", "M", "Chant Time", "M", "Read(m)", "Hear(m)", "Seva(m)", "Day Sleep", "Total", "Percentage"]
-        ];
-
-        // 2. MAPPING DATA INTO ROWS
-        let srNo = 1;
+        const dataArray = [["Date", "Bed", "M", "Wake", "M", "Chant", "M", "Read(m)", "M", "Hear(m)", "M", "Seva(m)", "M", "Day Sleep", "DS M", "Total", "%"]];
+        
         snap.forEach(doc => {
             const e = doc.data();
-            tableData.push([
-                srNo++,                           // Sr No.
-                doc.id,                           // Date
-                e.sleepTime || "NR",              // Bed Time
-                e.scores?.sleep ?? 0,             // Marks
-                e.wakeupTime || "NR",             // Wake Up
-                e.scores?.wakeup ?? 0,            // Marks
-                e.chantingTime || "NR",           // Chant Time
-                e.scores?.chanting ?? 0,          // Marks
-                e.readingMinutes || 0,            // Read
-                e.hearingMinutes || 0,            // Hear
-                e.serviceMinutes || 0,            // Seva
-                e.daySleepMinutes || 0,           // Day Sleep
-                e.totalScore ?? 0,                // Total
-                (e.dayPercent ?? 0) + "%"         // %
+            dataArray.push([
+                doc.id, e.sleepTime || "NR", e.scores?.sleep ?? 0, 
+                e.wakeupTime || "NR", e.scores?.wakeup ?? 0, 
+                e.chantingTime || "NR", e.scores?.chanting ?? 0, 
+                e.readingMinutes || 0, e.scores?.reading ?? 0, 
+                e.hearingMinutes || 0, e.scores?.hearing ?? 0, 
+                e.serviceMinutes || 0, e.scores?.service ?? 0, 
+                e.daySleepMinutes || 0, e.scores?.daySleep ?? 0, 
+                e.totalScore ?? 0, (e.dayPercent ?? 0) + "%"
             ]);
         });
 
-        // 3. CREATE WORKSHEET
-        const worksheet = XLSX.utils.aoa_to_sheet(tableData);
+        const worksheet = XLSX.utils.aoa_to_sheet(dataArray);
         const workbook = XLSX.utils.book_new();
-
-        // 4. AUTO-COLUMN WIDTH
-        const wscols = [
-            {wch: 6}, {wch: 12}, {wch: 10}, {wch: 5}, {wch: 10}, {wch: 5}, {wch: 10}, {wch: 5}, {wch: 8}, {wch: 8}, {wch: 8}, {wch: 10}, {wch: 8}, {wch: 10}
-        ];
-        worksheet['!cols'] = wscols;
-
-        // 5. SAVE FILE
-        XLSX.utils.book_append_sheet(workbook, worksheet, "Sadhana_Log");
-        const fileName = `${userName.replace(/\s+/g, '_')}_Sadhana_Report.xlsx`;
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Sadhana_Sheet");
+        
+        const fileName = `${userName.replace(/\s+/g, '_')}_Sadhana.xlsx`;
         XLSX.writeFile(workbook, fileName);
 
     } catch (error) {
         console.error("Download Error:", error);
-        alert("Download Failed: " + error.message);
+        alert("Download Failed! Technical Error: " + error.message);
     }
 };
 
@@ -111,16 +92,14 @@ window.downloadMasterReport = async () => {
         }
         weeks.reverse();
         const usersSnap = await db.collection('users').get();
+        const rows = [["User Name", "Category", ...weeks.map(w => w.label + " (%)")]];
         
-        const rows = [["Sr No.", "User Name", "Category", ...weeks.map(w => w.label + " (%)")]];
-        
-        let count = 1;
         for (const uDoc of usersSnap.docs) {
             const u = uDoc.data();
             const sSnap = await uDoc.ref.collection('sadhana').get();
             const sEntries = sSnap.docs.map(d => ({ date: d.id, score: d.data().totalScore || 0 }));
-            const userRow = [count++, u.name, u.chantingCategory || 'Level-1'];
-            const isL12 = userRow[2].includes("Level-1") || userRow[2].includes("Level-2");
+            const userRow = [u.name, u.chantingCategory || 'Level-1'];
+            const isL12 = userRow[1].includes("Level-1") || userRow[1].includes("Level-2");
             const weeklyMax = isL12 ? 770 : 1120;
 
             weeks.forEach(w => {
@@ -137,8 +116,7 @@ window.downloadMasterReport = async () => {
         }
         const ws = XLSX.utils.aoa_to_sheet(rows);
         const wb = XLSX.utils.book_new();
-        ws['!cols'] = [{wch: 6}, {wch: 20}, {wch: 15}, {wch: 15}, {wch: 15}, {wch: 15}, {wch: 15}];
-        XLSX.utils.book_append_sheet(wb, ws, "Comparative_Report");
+        XLSX.utils.book_append_sheet(wb, ws, "Master_Report");
         XLSX.writeFile(wb, "Master_Sadhana_Report.xlsx");
     } catch (e) { alert("Master Download Failed"); }
 };
