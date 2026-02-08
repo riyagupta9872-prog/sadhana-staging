@@ -1,15 +1,4 @@
-// --- 1. FIREBASE SETUP ---
-const firebaseConfig = {
-    apiKey: "AIzaSyDbRy8ZMJAWeTyZVnTphwRIei6jAckagjA",
-    authDomain: "sadhana-tracker-b65ff.firebaseapp.com",
-    projectId: "sadhana-tracker-b65ff",
-    storageBucket: "sadhana-tracker-b65ff.firebasestorage.app",
-    messagingSenderId: "926961218888",
-    appId: "1:926961218888:web:db8f12ef8256d13f036f7d"
-};
-if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth(), db = firebase.firestore();
-let currentUser = null, userProfile = null, activeListener = null;
+
 
 // --- 2. HELPERS ---
 const t2m = (t, isSleep = false) => {
