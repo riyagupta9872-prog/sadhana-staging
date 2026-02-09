@@ -1,250 +1,269 @@
-// Firebase Configuration
+// --- 1. FIREBASE SETUP ---
 const firebaseConfig = {
     apiKey: "AIzaSyCZdmZJckSWJo1tFT14NVKVurUGsoKrRy8",
     authDomain: "rapd--sadhana-tracker.firebaseapp.com",
     projectId: "rapd--sadhana-tracker",
     storageBucket: "rapd--sadhana-tracker.firebasestorage.app",
     messagingSenderId: "811405448950",
-    appId: "1:811405448950:web:8b711f3129e4bdf06dbed7",
-    measurementId: "G-W92S4VDG2D"
+    appId: "1:811405448950:web:8b711f3129e4bdf06dbed7"
 };
+if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth(), db = firebase.firestore();
+let currentUser = null, userProfile = null, activeListener = null;
+let scoreChart = null, activityChart = null;
 
-// Initialize Firebase
-firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
-const db = firebase.firestore();
-let currentUser = null;
-
-// Helper: Time to minutes
-function t2m(time, isPM) {
-    const [h, m] = time.split(':').map(Number);
-    if (isPM && h < 12) return (h + 12) * 60 + m;
-    if (isPM && h === 12) return h * 60 + m;
+// --- 2. HELPERS ---
+const t2m = (t, isSleep = false) => {
+    if (!t || t === "NR") return 9999;
+    let [h, m] = t.split(':').map(Number);
+    if (isSleep && h >= 0 && h <= 3) h += 24; 
     return h * 60 + m;
-}
-
-// Helper: Format date
-function formatDate(date) {
-    return new Date(date).toLocaleDateString('en-IN', { 
-        day: '2-digit', 
-        month: 'short', 
-        year: 'numeric' 
-    });
-}
-
-// --- AUTHENTICATION ---
-// Check if user is new or returning
-function checkUserStatus() {
-    const hasAccount = localStorage.getItem('hasAccount');
-    const trustDevice = localStorage.getItem('trustDevice');
-    
-    if (!hasAccount) {
-        // First time user - show Google signup
-        document.querySelector('.login-form').style.display = 'none';
-        document.getElementById('first-time-setup').style.display = 'block';
-    } else {
-        // Returning user - show email/password login
-        document.querySelector('.login-form').style.display = 'block';
-        document.getElementById('first-time-setup').style.display = 'none';
-    }
-}
-
-// Initialize on load
-checkUserStatus();
-
-// Show/Hide forms
-document.getElementById('show-signup').onclick = () => {
-    document.querySelector('.login-form').style.display = 'none';
-    document.getElementById('first-time-setup').style.display = 'block';
 };
 
-document.getElementById('show-login-from-setup').onclick = () => {
-    document.getElementById('first-time-setup').style.display = 'none';
-    document.getElementById('password-setup').style.display = 'none';
-    document.querySelector('.login-form').style.display = 'block';
-};
+function getWeekInfo(dateStr) {
+    const d = new Date(dateStr);
+    const sun = new Date(d); sun.setDate(d.getDate() - d.getDay());
+    const sat = new Date(sun); sat.setDate(sun.getDate() + 6);
+    const fmt = (date) => {
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = date.toLocaleString('en-GB', { month: 'short' });
+        return `${day} ${month}`;
+    };
+    return { sunStr: sun.toISOString().split('T')[0], label: `${fmt(sun)} to ${fmt(sat)}_${sun.getFullYear()}` };
+}
 
-// Google Sign-up (First Time Only)
-const googleProvider = new firebase.auth.GoogleAuthProvider();
+function getNRData(date) {
+    return {
+        id: date, totalScore: -40, dayPercent: -23,
+        sleepTime: "NR", wakeupTime: "NR", morningProgramTime: "NR", chantingTime: "NR",
+        readingMinutes: 0, hearingMinutes: 0, notesMinutes: 0, daySleepMinutes: 0,
+        scores: { sleep: -5, wakeup: -5, morningProgram: -5, chanting: -5, reading: -5, hearing: -5, notes: -5, daySleep: 0 }
+    };
+}
 
-document.getElementById('google-signup-btn').onclick = async () => {
+// --- 3. DOWNLOAD EXCEL LOGIC ---
+window.downloadUserExcel = async (userId, userName) => {
     try {
-        const result = await auth.signInWithPopup(googleProvider);
-        const user = result.user;
-        
-        // Check if user doc exists
-        const userDoc = await db.collection('users').doc(user.uid).get();
-        
-        if (!userDoc.exists) {
-            // New user - show password setup
-            document.getElementById('first-time-setup').style.display = 'none';
-            document.getElementById('password-setup').style.display = 'block';
-            document.getElementById('setup-email').value = user.email;
-            
-            // Store temp user info
-            window.tempGoogleUser = {
-                uid: user.uid,
-                name: user.displayName,
-                email: user.email
-            };
-        } else {
-            // Existing user - they should use email/password
-            await auth.signOut();
-            alert('Account exists! Please login with your email and password.');
-            document.getElementById('first-time-setup').style.display = 'none';
-            document.querySelector('.login-form').style.display = 'block';
-        }
-    } catch (error) {
-        alert('Google signup failed: ' + error.message);
-    }
-};
-
-// Complete Setup (Set Password)
-document.getElementById('complete-setup-btn').onclick = async () => {
-    const password = document.getElementById('setup-password').value;
-    const confirmPassword = document.getElementById('setup-password-confirm').value;
-    const trustDevice = document.getElementById('trust-device').checked;
-    
-    if (password.length < 6) {
-        alert('Password must be at least 6 characters');
-        return;
-    }
-    
-    if (password !== confirmPassword) {
-        alert('Passwords do not match!');
-        return;
-    }
-    
-    try {
-        const user = auth.currentUser;
-        if (!user) {
-            alert('Session expired. Please try again.');
-            location.reload();
+        if (typeof XLSX === 'undefined') {
+            alert("Excel Library not loaded. Please wait 2 seconds and try again.");
             return;
         }
-        
-        // Link email/password to Google account
-        const credential = firebase.auth.EmailAuthProvider.credential(
-            window.tempGoogleUser.email,
-            password
-        );
-        await user.linkWithCredential(credential);
-        
-        // Create user document
-        await db.collection('users').doc(user.uid).set({
-            name: window.tempGoogleUser.name,
-            email: window.tempGoogleUser.email,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            setupCompleted: true
+
+        const snap = await db.collection('users').doc(userId).collection('sadhana').get();
+        if (snap.empty) {
+            alert("No data found to download.");
+            return;
+        }
+
+        // Organize data by weeks
+        const weeksData = {};
+        snap.forEach(doc => {
+            const weekInfo = getWeekInfo(doc.id);
+            if (!weeksData[weekInfo.sunStr]) {
+                weeksData[weekInfo.sunStr] = { 
+                    label: weekInfo.label, 
+                    sunStr: weekInfo.sunStr,
+                    days: {} 
+                };
+            }
+            weeksData[weekInfo.sunStr].days[doc.id] = doc.data();
         });
+
+        // Sort weeks by Sunday date (latest first)
+        const sortedWeeks = Object.keys(weeksData).sort((a, b) => b.localeCompare(a));
+
+        const dataArray = [];
+
+        sortedWeeks.forEach((sunStr, weekIndex) => {
+            const week = weeksData[sunStr];
+            
+            // Week Header Row (merged)
+            dataArray.push([`WEEK: ${week.label}`, '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
+            
+            // Column Headers
+            dataArray.push([
+                'Date', 'Bed', 'M', 'Wake', 'M', 'MP Time', 'M', 'Chant', 'M', 
+                'Read(m)', 'M', 'Hear(m)', 'M', 'Notes(m)', 'M', 
+                'Day Sleep(m)', 'M', 'Total', '%'
+            ]);
+
+            // Daily rows (Sun to Sat)
+            let weekTotals = {
+                sleepM: 0, wakeupM: 0, morningProgramM: 0, chantingM: 0,
+                readingM: 0, hearingM: 0, notesM: 0, daySleepM: 0,
+                readingMins: 0, hearingMins: 0, notesMins: 0, daySleepMins: 0,
+                total: 0
+            };
+
+            const weekStart = new Date(week.sunStr);
+            const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+            for (let i = 0; i < 7; i++) {
+                const currentDate = new Date(weekStart);
+                currentDate.setDate(currentDate.getDate() + i);
+                const dateStr = currentDate.toISOString().split('T')[0];
+                const dayNum = currentDate.getDate();
+                const dayLabel = `${dayNames[i]} ${String(dayNum).padStart(2, '0')}`;
+
+                const entry = week.days[dateStr] || getNRData(dateStr);
+
+                // Add to weekly totals
+                weekTotals.sleepM += entry.scores?.sleep ?? 0;
+                weekTotals.wakeupM += entry.scores?.wakeup ?? 0;
+                weekTotals.morningProgramM += entry.scores?.morningProgram ?? 0;
+                weekTotals.chantingM += entry.scores?.chanting ?? 0;
+                weekTotals.readingM += entry.scores?.reading ?? 0;
+                weekTotals.hearingM += entry.scores?.hearing ?? 0;
+                weekTotals.notesM += entry.scores?.notes ?? 0;
+                weekTotals.daySleepM += entry.scores?.daySleep ?? 0;
+                weekTotals.readingMins += entry.readingMinutes || 0;
+                weekTotals.hearingMins += entry.hearingMinutes || 0;
+                weekTotals.notesMins += entry.notesMinutes || 0;
+                weekTotals.daySleepMins += entry.daySleepMinutes || 0;
+                weekTotals.total += entry.totalScore ?? 0;
+
+                dataArray.push([
+                    dayLabel,
+                    entry.sleepTime || 'NR',
+                    entry.scores?.sleep ?? 0,
+                    entry.wakeupTime || 'NR',
+                    entry.scores?.wakeup ?? 0,
+                    entry.morningProgramTime || 'NR',
+                    entry.scores?.morningProgram ?? 0,
+                    entry.chantingTime || 'NR',
+                    entry.scores?.chanting ?? 0,
+                    entry.readingMinutes || 0,
+                    entry.scores?.reading ?? 0,
+                    entry.hearingMinutes || 0,
+                    entry.scores?.hearing ?? 0,
+                    entry.notesMinutes || 0,
+                    entry.scores?.notes ?? 0,
+                    entry.daySleepMinutes || 0,
+                    entry.scores?.daySleep ?? 0,
+                    entry.totalScore ?? 0,
+                    (entry.dayPercent ?? 0) + '%'
+                ]);
+            }
+
+            // Apply weekly notes compensation
+            let adjustedNotesM = weekTotals.notesM;
+            if (weekTotals.notesMins >= 245) {
+                adjustedNotesM = 175; // Full marks for weekly target
+            }
+            const adjustedTotal = weekTotals.total - weekTotals.notesM + adjustedNotesM;
+
+            // Weekly Total Row
+            const weekPercent = Math.round((adjustedTotal / 1225) * 100);
+            dataArray.push([
+                'WEEKLY TOTAL',
+                '',
+                weekTotals.sleepM,
+                '',
+                weekTotals.wakeupM,
+                '',
+                weekTotals.morningProgramM,
+                '',
+                weekTotals.chantingM,
+                weekTotals.readingMins,
+                weekTotals.readingM,
+                weekTotals.hearingMins,
+                weekTotals.hearingM,
+                weekTotals.notesMins,
+                adjustedNotesM,
+                weekTotals.daySleepMins,
+                weekTotals.daySleepM,
+                adjustedTotal,
+                weekPercent + '%'
+            ]);
+
+            // Weekly Percentage Summary Row
+            dataArray.push([
+                `WEEKLY PERCENTAGE: ${adjustedTotal} / 1225 = ${weekPercent}%${weekTotals.notesMins >= 245 ? ' ✓ Notes bonus applied!' : ''}`,
+                '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
+            ]);
+
+            // Blank rows between weeks
+            if (weekIndex < sortedWeeks.length - 1) {
+                dataArray.push(['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
+                dataArray.push(['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
+            }
+        });
+
+        const worksheet = XLSX.utils.aoa_to_sheet(dataArray);
         
-        // Mark as having account
-        localStorage.setItem('hasAccount', 'true');
-        
-        // Set trust device
-        if (trustDevice) {
-            localStorage.setItem('trustDevice', 'true');
-            auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-        } else {
-            localStorage.setItem('trustDevice', 'false');
-            auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
-        }
-        
-        alert('Setup complete! You can now use email/password for daily login.');
-        
-        // User will be automatically logged in via auth state observer
+        // Set column widths
+        worksheet['!cols'] = [
+            {wch: 10}, {wch: 8}, {wch: 4}, {wch: 8}, {wch: 4}, 
+            {wch: 8}, {wch: 4}, {wch: 8}, {wch: 4},
+            {wch: 10}, {wch: 4}, {wch: 10}, {wch: 4}, 
+            {wch: 10}, {wch: 4}, {wch: 12}, {wch: 4}, {wch: 8}, {wch: 6}
+        ];
+
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Sadhana History');
+        XLSX.writeFile(workbook, `${userName}_Sadhana_History.xlsx`);
         
     } catch (error) {
-        alert('Setup failed: ' + error.message);
+        console.error("Download error:", error);
+        alert("Error downloading Excel: " + error.message);
     }
 };
 
-// Email/Password Login
-document.getElementById('login-btn').onclick = async () => {
-    const email = document.getElementById('login-email').value;
-    const password = document.getElementById('login-password').value;
-    const rememberMe = document.getElementById('remember-me').checked;
-    
-    try {
-        // Set persistence before login
-        if (rememberMe) {
-            await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-        } else {
-            await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
-        }
-        
-        await auth.signInWithEmailAndPassword(email, password);
-        
-        // Mark as having account
-        localStorage.setItem('hasAccount', 'true');
-        if (rememberMe) {
-            localStorage.setItem('trustDevice', 'true');
-        }
-        
-    } catch (error) {
-        alert('Login failed: ' + error.message);
-    }
-};
+// --- 4. UI NAVIGATION ---
+function showSection(section) {
+    ['auth', 'profile', 'dashboard'].forEach(s => {
+        document.getElementById(`${s}-section`).classList.add('hidden');
+    });
+    document.getElementById(`${section}-section`).classList.remove('hidden');
+}
 
-// Logout
-document.getElementById('logout-btn').onclick = () => {
-    const trustDevice = localStorage.getItem('trustDevice');
+function switchTab(tabName) {
+    // Update buttons
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
     
-    if (trustDevice !== 'true') {
-        // Clear all if not trusted
-        localStorage.removeItem('hasAccount');
-        localStorage.removeItem('trustDevice');
+    // Update content
+    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+    document.getElementById(`${tabName}-tab`).classList.add('active');
+    
+    // Load data for specific tabs
+    if (tabName === 'reports') {
+        loadReports(currentUser.uid, 'weekly-reports-container');
+    } else if (tabName === 'charts') {
+        generateCharts();
     }
-    
-    auth.signOut();
-};
+}
 
-// Auth State Observer
+// --- 5. AUTH STATE ---
 auth.onAuthStateChanged(async (user) => {
     if (user) {
         currentUser = user;
-        document.getElementById('login-screen').classList.remove('active');
-        document.getElementById('dashboard-screen').classList.add('active');
-        document.getElementById('user-name').textContent = user.displayName || user.email;
+        const userDoc = await db.collection('users').doc(user.uid).get();
         
-        // Set today's date
-        document.getElementById('sadhana-date').valueAsDate = new Date();
-        document.getElementById('report-date').valueAsDate = new Date();
+        if (!userDoc.exists || !userDoc.data().name) {
+            showSection('profile');
+            document.getElementById('profile-title').textContent = 'Set Your Name';
+        } else {
+            userProfile = userDoc.data();
+            showSection('dashboard');
+            document.getElementById('user-display-name').textContent = userProfile.name;
+            setupDateSelect();
+            loadReports(currentUser.uid, 'weekly-reports-container');
+        }
     } else {
+        showSection('auth');
         currentUser = null;
-        document.getElementById('dashboard-screen').classList.remove('active');
-        document.getElementById('login-screen').classList.add('active');
+        userProfile = null;
     }
 });
 
-// --- TAB NAVIGATION ---
-document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.onclick = () => {
-        const tab = btn.dataset.tab;
-        
-        // Update buttons
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        
-        // Update content
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-        document.getElementById(tab + '-tab').classList.add('active');
-        
-        // Refresh charts if charts tab
-        if (tab === 'charts') {
-            generateCharts();
-        }
-    };
-});
-
-// --- SCORING SYSTEM ---
+// --- 6. SCORING & FORM ---
 document.getElementById('sadhana-form').onsubmit = async (e) => {
     e.preventDefault();
-    
     const date = document.getElementById('sadhana-date').value;
     const slp = document.getElementById('sleep-time').value;
     const wak = document.getElementById('wakeup-time').value;
-    const morningProgram = document.getElementById('morning-program-time').value;
+    const mpTime = document.getElementById('morning-program-time').value;
     const chn = document.getElementById('chanting-time').value;
     const rMin = parseInt(document.getElementById('reading-mins').value) || 0;
     const hMin = parseInt(document.getElementById('hearing-mins').value) || 0;
@@ -283,12 +302,17 @@ document.getElementById('sadhana-form').onsubmit = async (e) => {
     else sc.wakeup = -5;
     
     // Morning Program Score
-    const mpM = t2m(morningProgram, false);
-    if (mpM <= 285) sc.morningProgram = 25; // 4:45 AM
+    // 4:45 AM = 285 mins → 25
+    // 5:00 AM = 300 mins → 10
+    // 5:01-5:34 AM = 301-334 mins → 5
+    // 5:35 AM = 335 mins → 0
+    // 6:00 AM = 360 mins → -5
+    const mpM = t2m(mpTime, false);
+    if (mpM <= 285) sc.morningProgram = 25; // 4:45 AM or earlier
     else if (mpM <= 300) sc.morningProgram = 10; // 5:00 AM
-    else if (mpM <= 305) sc.morningProgram = 5; // 5:05 AM
-    else if (mpM <= 335) sc.morningProgram = 0; // 5:35 AM
-    else sc.morningProgram = -5; // After 6:00 AM
+    else if (mpM <= 334) sc.morningProgram = 5; // 5:01 to 5:34 AM
+    else if (mpM <= 359) sc.morningProgram = 0; // 5:35 to 5:59 AM
+    else sc.morningProgram = -5; // 6:00 AM or later
     
     // Chanting Score (Fixed slots)
     const chnM = t2m(chn, false);
@@ -331,561 +355,130 @@ document.getElementById('sadhana-form').onsubmit = async (e) => {
     const dayPercent = Math.round((total / 175) * 100);
     
     try {
-        await db.collection('users').doc(currentUser.uid)
-            .collection('sadhana').doc(date).set({
-                sleepTime: slp,
-                wakeupTime: wak,
-                morningProgramTime: morningProgram,
-                chantingTime: chn,
-                readingMinutes: rMin,
-                hearingMinutes: hMin,
-                notesMinutes: nMin,
-                daySleepMinutes: dsMin,
-                scores: sc,
-                totalScore: total,
-                dayPercent: dayPercent,
-                submittedAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
+        await db.collection('users').doc(currentUser.uid).collection('sadhana').doc(date).set({
+            sleepTime: slp,
+            wakeupTime: wak,
+            morningProgramTime: mpTime,
+            chantingTime: chn,
+            readingMinutes: rMin,
+            hearingMinutes: hMin,
+            notesMinutes: nMin,
+            daySleepMinutes: dsMin,
+            scores: sc,
+            totalScore: total,
+            dayPercent: dayPercent,
+            submittedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
         
         alert(`Success! Score: ${total}/175 (${dayPercent}%)`);
-        document.getElementById('sadhana-form').reset();
-        document.getElementById('sadhana-date').valueAsDate = new Date();
+        switchTab('reports');
     } catch (error) {
-        alert('Error saving data: ' + error.message);
+        alert('Error saving: ' + error.message);
     }
 };
 
-// --- REPORTS ---
-document.getElementById('generate-report-btn').onclick = async () => {
-    const type = document.getElementById('report-type').value;
-    const date = new Date(document.getElementById('report-date').value);
+// --- 7. REPORTS ---
+async function loadReports(userId, containerId) {
+    const container = document.getElementById(containerId);
+    const snap = await db.collection('users').doc(userId).collection('sadhana').get();
     
-    if (type === 'daily') {
-        await generateDailyReport(date);
-    } else if (type === 'weekly') {
-        await generateWeeklyReport(date);
-    } else if (type === 'monthly') {
-        await generateMonthlyReport(date);
-    }
-};
-
-async function generateDailyReport(date) {
-    const dateStr = date.toISOString().split('T')[0];
-    const doc = await db.collection('users').doc(currentUser.uid)
-        .collection('sadhana').doc(dateStr).get();
-    
-    if (!doc.exists) {
-        document.getElementById('report-display').innerHTML = 
-            '<p style="color: #999; text-align: center; padding: 40px;">No data found for this date</p>';
+    if (snap.empty) {
+        container.innerHTML = '<p style="text-align:center; color:#999; padding:40px;">No sadhana data yet. Start tracking!</p>';
         return;
     }
     
-    const data = doc.data();
-    const sc = data.scores;
-    
-    const html = `
-        <h3>Daily Report - ${formatDate(date)}</h3>
-        <table class="report-table">
-            <thead>
-                <tr>
-                    <th>Activity</th>
-                    <th>Time/Duration</th>
-                    <th>Score</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>Sleep Time</td>
-                    <td>${data.sleepTime}</td>
-                    <td class="score-cell" style="background: ${getScoreColor(sc.sleep)}">${sc.sleep}</td>
-                </tr>
-                <tr>
-                    <td>Wakeup Time</td>
-                    <td>${data.wakeupTime}</td>
-                    <td class="score-cell" style="background: ${getScoreColor(sc.wakeup)}">${sc.wakeup}</td>
-                </tr>
-                <tr>
-                    <td>Morning Program</td>
-                    <td>${data.morningProgramTime}</td>
-                    <td class="score-cell" style="background: ${getScoreColor(sc.morningProgram)}">${sc.morningProgram}</td>
-                </tr>
-                <tr>
-                    <td>Chanting Completion</td>
-                    <td>${data.chantingTime}</td>
-                    <td class="score-cell" style="background: ${getScoreColor(sc.chanting)}">${sc.chanting}</td>
-                </tr>
-                <tr>
-                    <td>Reading</td>
-                    <td>${data.readingMinutes} mins</td>
-                    <td class="score-cell" style="background: ${getScoreColor(sc.reading)}">${sc.reading}</td>
-                </tr>
-                <tr>
-                    <td>Hearing</td>
-                    <td>${data.hearingMinutes} mins</td>
-                    <td class="score-cell" style="background: ${getScoreColor(sc.hearing)}">${sc.hearing}</td>
-                </tr>
-                <tr>
-                    <td>Notes Revision</td>
-                    <td>${data.notesMinutes} mins</td>
-                    <td class="score-cell" style="background: ${getScoreColor(sc.notes)}">${sc.notes}</td>
-                </tr>
-                <tr>
-                    <td>Day Sleep</td>
-                    <td>${data.daySleepMinutes} mins</td>
-                    <td class="score-cell" style="background: ${getScoreColor(sc.daySleep)}">${sc.daySleep}</td>
-                </tr>
-                <tr style="font-weight: bold; background: #f5f5f5;">
-                    <td colspan="2">TOTAL</td>
-                    <td class="score-cell" style="background: ${getScoreColor(data.totalScore)}">${data.totalScore}/175 (${data.dayPercent}%)</td>
-                </tr>
-            </tbody>
-        </table>
-    `;
-    
-    document.getElementById('report-display').innerHTML = html;
-}
-
-async function generateWeeklyReport(date) {
-    const weekStart = new Date(date);
-    weekStart.setDate(date.getDate() - date.getDay());
-    
-    const weekDates = [];
-    for (let i = 0; i < 7; i++) {
-        const d = new Date(weekStart);
-        d.setDate(weekStart.getDate() + i);
-        weekDates.push(d.toISOString().split('T')[0]);
-    }
-    
-    const snapshot = await db.collection('users').doc(currentUser.uid)
-        .collection('sadhana')
-        .where(firebase.firestore.FieldPath.documentId(), 'in', weekDates)
-        .get();
-    
-    const weekData = {};
-    snapshot.forEach(doc => {
-        weekData[doc.id] = doc.data();
+    const weeksData = {};
+    snap.forEach(doc => {
+        const weekInfo = getWeekInfo(doc.id);
+        if (!weeksData[weekInfo.sunStr]) {
+            weeksData[weekInfo.sunStr] = { 
+                label: weekInfo.label, 
+                sunStr: weekInfo.sunStr,
+                days: {} 
+            };
+        }
+        weeksData[weekInfo.sunStr].days[doc.id] = doc.data();
     });
     
-    // Calculate weekly totals
-    let totalScore = 0;
-    let totalReadingMins = 0;
-    let totalHearingMins = 0;
-    let totalNotesMins = 0;
-    let totalReadingScore = 0;
-    let totalHearingScore = 0;
-    let totalNotesScore = 0;
-    let daysPresent = 0;
+    const sortedWeeks = Object.keys(weeksData).sort((a, b) => b.localeCompare(a));
     
-    let tableRows = '';
-    weekDates.forEach(dateStr => {
-        const data = weekData[dateStr];
-        if (data) {
-            daysPresent++;
-            totalScore += data.totalScore || 0;
-            totalReadingMins += data.readingMinutes || 0;
-            totalHearingMins += data.hearingMinutes || 0;
-            totalNotesMins += data.notesMinutes || 0;
-            totalReadingScore += data.scores?.reading || 0;
-            totalHearingScore += data.scores?.hearing || 0;
-            totalNotesScore += data.scores?.notes || 0;
+    let html = '';
+    sortedWeeks.forEach(sunStr => {
+        const week = weeksData[sunStr];
+        const weekStart = new Date(week.sunStr);
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        
+        let weekTotals = {
+            total: 0,
+            readingMins: 0,
+            hearingMins: 0,
+            notesMins: 0,
+            notesMarks: 0
+        };
+        
+        let dailyHTML = '';
+        for (let i = 0; i < 7; i++) {
+            const currentDate = new Date(weekStart);
+            currentDate.setDate(currentDate.getDate() + i);
+            const dateStr = currentDate.toISOString().split('T')[0];
+            const entry = week.days[dateStr] || getNRData(dateStr);
             
-            tableRows += `
-                <tr>
-                    <td>${formatDate(dateStr)}</td>
-                    <td>${data.readingMinutes} mins (${data.scores?.reading})</td>
-                    <td>${data.hearingMinutes} mins (${data.scores?.hearing})</td>
-                    <td>${data.notesMinutes} mins (${data.scores?.notes})</td>
-                    <td class="score-cell" style="background: ${getScoreColor(data.totalScore)}">${data.totalScore}/175</td>
-                </tr>
-            `;
-        } else {
-            tableRows += `
-                <tr style="opacity: 0.5;">
-                    <td>${formatDate(dateStr)}</td>
-                    <td colspan="4" style="text-align: center; color: #999;">No data</td>
-                </tr>
+            weekTotals.total += entry.totalScore ?? 0;
+            weekTotals.readingMins += entry.readingMinutes || 0;
+            weekTotals.hearingMins += entry.hearingMinutes || 0;
+            weekTotals.notesMins += entry.notesMinutes || 0;
+            weekTotals.notesMarks += entry.scores?.notes || 0;
+            
+            const scoreClass = (entry.totalScore ?? 0) < 0 ? 'score-negative' : '';
+            dailyHTML += `
+                <div class="daily-entry">
+                    <div class="daily-meta">
+                        <span><strong>${dayNames[i]} ${currentDate.getDate()}</strong></span>
+                        <span class="${scoreClass}">Total: ${entry.totalScore ?? 0}/175</span>
+                    </div>
+                    <div class="activity-details">
+                        <span>Sleep: ${entry.sleepTime} (${entry.scores?.sleep ?? 0}) | Wake: ${entry.wakeupTime} (${entry.scores?.wakeup ?? 0})</span>
+                        <span>MP: ${entry.morningProgramTime || 'NR'} (${entry.scores?.morningProgram ?? 0}) | Chant: ${entry.chantingTime} (${entry.scores?.chanting ?? 0})</span>
+                        <span>Read: ${entry.readingMinutes || 0}m (${entry.scores?.reading ?? 0}) | Hear: ${entry.hearingMinutes || 0}m (${entry.scores?.hearing ?? 0})</span>
+                        <span>Notes: ${entry.notesMinutes || 0}m (${entry.scores?.notes ?? 0}) | Day Sleep: ${entry.daySleepMinutes || 0}m (${entry.scores?.daySleep ?? 0})</span>
+                    </div>
+                </div>
             `;
         }
-    });
-    
-    // Apply weekly notes compensation
-    let weeklyNotesScore = totalNotesScore;
-    if (totalNotesMins >= 245) {
-        weeklyNotesScore = 175; // Full marks for weekly target
-    }
-    
-    const adjustedWeeklyTotal = totalScore - totalNotesScore + weeklyNotesScore;
-    
-    const html = `
-        <h3>Weekly Report - Week of ${formatDate(weekStart)}</h3>
-        <table class="report-table">
-            <thead>
-                <tr>
-                    <th>Date</th>
-                    <th>Reading</th>
-                    <th>Hearing</th>
-                    <th>Notes Revision</th>
-                    <th>Daily Total</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${tableRows}
-            </tbody>
-        </table>
         
-        <div class="weekly-summary">
-            <h3>Weekly Summary</h3>
-            <div class="summary-grid">
-                <div class="summary-item">
-                    <h4>Total Score</h4>
-                    <div class="value">${totalScore}/1225</div>
-                    <small>${Math.round((totalScore/1225)*100)}%</small>
+        // Apply weekly notes compensation
+        let adjustedNotesMarks = weekTotals.notesMarks;
+        if (weekTotals.notesMins >= 245) {
+            adjustedNotesMarks = 175; // Full marks
+        }
+        const adjustedTotal = weekTotals.total - weekTotals.notesMarks + adjustedNotesMarks;
+        const weekPercent = Math.round((adjustedTotal / 1225) * 100);
+        
+        const weekClass = adjustedTotal < 245 ? 'low-score' : '';
+        
+        html += `
+            <div class="week-card ${weekClass}">
+                <div class="week-header" onclick="this.nextElementSibling.classList.toggle('expanded'); this.querySelector('.toggle-icon').textContent = this.nextElementSibling.classList.contains('expanded') ? '▼' : '▶';">
+                    <span>${week.label}</span>
+                    <span>${adjustedTotal}/1225 (${weekPercent}%) <span class="toggle-icon">▶</span></span>
                 </div>
-                <div class="summary-item">
-                    <h4>Adjusted Score (Notes Compensation)</h4>
-                    <div class="value">${adjustedWeeklyTotal}/1225</div>
-                    <small>${totalNotesMins >= 245 ? '✓ Weekly target met!' : 'Target: 245 mins'}</small>
-                </div>
-                <div class="summary-item">
-                    <h4>Reading</h4>
-                    <div class="value">${totalReadingMins} mins</div>
-                    <small>${totalReadingScore} marks</small>
-                </div>
-                <div class="summary-item">
-                    <h4>Hearing</h4>
-                    <div class="value">${totalHearingMins} mins</div>
-                    <small>${totalHearingScore} marks</small>
-                </div>
-                <div class="summary-item">
-                    <h4>Notes Revision</h4>
-                    <div class="value">${totalNotesMins} mins</div>
-                    <small>${weeklyNotesScore} marks ${totalNotesMins >= 245 ? '(Bonus!)' : ''}</small>
-                </div>
-                <div class="summary-item">
-                    <h4>Days Tracked</h4>
-                    <div class="value">${daysPresent}/7</div>
+                <div class="week-content">
+                    ${dailyHTML}
+                    <div style="margin-top: 15px; padding: 10px; background: #f8f9fa; border-radius: 4px;">
+                        <strong>Weekly Summary:</strong><br>
+                        Reading: ${weekTotals.readingMins} mins | Hearing: ${weekTotals.hearingMins} mins<br>
+                        Notes: ${weekTotals.notesMins} mins → ${adjustedNotesMarks} marks ${weekTotals.notesMins >= 245 ? '✓ Full bonus!' : ''}<br>
+                        <strong>Total: ${adjustedTotal}/1225 (${weekPercent}%)</strong>
+                    </div>
                 </div>
             </div>
-        </div>
-    `;
-    
-    document.getElementById('report-display').innerHTML = html;
-}
-
-async function generateMonthlyReport(date) {
-    const year = date.getFullYear();
-    const month = date.getMonth();
-    const startDate = new Date(year, month, 1);
-    const endDate = new Date(year, month + 1, 0);
-    
-    const snapshot = await db.collection('users').doc(currentUser.uid)
-        .collection('sadhana')
-        .where(firebase.firestore.FieldPath.documentId(), '>=', startDate.toISOString().split('T')[0])
-        .where(firebase.firestore.FieldPath.documentId(), '<=', endDate.toISOString().split('T')[0])
-        .get();
-    
-    let totalScore = 0;
-    let daysPresent = 0;
-    let tableRows = '';
-    
-    snapshot.forEach(doc => {
-        const data = doc.data();
-        daysPresent++;
-        totalScore += data.totalScore || 0;
-        
-        tableRows += `
-            <tr>
-                <td>${formatDate(doc.id)}</td>
-                <td class="score-cell" style="background: ${getScoreColor(data.totalScore)}">${data.totalScore}/175</td>
-                <td>${data.dayPercent}%</td>
-            </tr>
         `;
     });
     
-    const monthName = date.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
-    const avgScore = daysPresent > 0 ? Math.round(totalScore / daysPresent) : 0;
-    
-    const html = `
-        <h3>Monthly Report - ${monthName}</h3>
-        <div class="weekly-summary" style="margin-bottom: 20px;">
-            <h3>Monthly Summary</h3>
-            <div class="summary-grid">
-                <div class="summary-item">
-                    <h4>Total Score</h4>
-                    <div class="value">${totalScore}</div>
-                </div>
-                <div class="summary-item">
-                    <h4>Days Tracked</h4>
-                    <div class="value">${daysPresent}</div>
-                </div>
-                <div class="summary-item">
-                    <h4>Average Score</h4>
-                    <div class="value">${avgScore}/175</div>
-                    <small>${Math.round((avgScore/175)*100)}%</small>
-                </div>
-            </div>
-        </div>
-        <table class="report-table">
-            <thead>
-                <tr>
-                    <th>Date</th>
-                    <th>Score</th>
-                    <th>Percentage</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${tableRows || '<tr><td colspan="3" style="text-align: center; color: #999;">No data for this month</td></tr>'}
-            </tbody>
-        </table>
-    `;
-    
-    document.getElementById('report-display').innerHTML = html;
+    container.innerHTML = html;
 }
 
-function getScoreColor(score) {
-    const maxScore = 25;
-    const percentage = (score / maxScore) * 100;
-    
-    if (percentage >= 90) return '#c8e6c9'; // Light green
-    if (percentage >= 70) return '#fff9c4'; // Light yellow
-    if (percentage >= 50) return '#ffe0b2'; // Light orange
-    return '#ffcdd2'; // Light red
-}
-
-// --- EXCEL DOWNLOAD ---
-document.getElementById('download-excel-btn').onclick = async () => {
-    const type = document.getElementById('report-type').value;
-    const date = new Date(document.getElementById('report-date').value);
-    
-    if (type === 'weekly') {
-        await downloadWeeklyExcel(date);
-    } else if (type === 'monthly') {
-        await downloadMonthlyExcel(date);
-    } else {
-        alert('Please select Weekly or Monthly report for Excel download');
-    }
-};
-
-async function downloadWeeklyExcel(date) {
-    const weekStart = new Date(date);
-    weekStart.setDate(date.getDate() - date.getDay());
-    
-    const weekDates = [];
-    for (let i = 0; i < 7; i++) {
-        const d = new Date(weekStart);
-        d.setDate(weekStart.getDate() + i);
-        weekDates.push(d.toISOString().split('T')[0]);
-    }
-    
-    const snapshot = await db.collection('users').doc(currentUser.uid)
-        .collection('sadhana')
-        .where(firebase.firestore.FieldPath.documentId(), 'in', weekDates)
-        .get();
-    
-    const weekData = {};
-    snapshot.forEach(doc => {
-        weekData[doc.id] = doc.data();
-    });
-    
-    // Prepare Excel data
-    const excelData = [
-        ['RAPD SADHANA TRACKER - WEEKLY REPORT'],
-        [`Week of ${formatDate(weekStart)}`],
-        [],
-        ['Date', 'Sleep', 'Wakeup', 'Morning Program', 'Chanting', 'Reading (mins)', 'Reading Score', 
-         'Hearing (mins)', 'Hearing Score', 'Notes (mins)', 'Notes Score', 'Day Sleep', 'Total Score']
-    ];
-    
-    let totalScore = 0;
-    let totalReadingMins = 0;
-    let totalHearingMins = 0;
-    let totalNotesMins = 0;
-    let totalNotesScore = 0;
-    
-    weekDates.forEach(dateStr => {
-        const data = weekData[dateStr];
-        if (data) {
-            const sc = data.scores;
-            totalScore += data.totalScore;
-            totalReadingMins += data.readingMinutes;
-            totalHearingMins += data.hearingMinutes;
-            totalNotesMins += data.notesMinutes;
-            totalNotesScore += sc.notes;
-            
-            excelData.push([
-                formatDate(dateStr),
-                sc.sleep,
-                sc.wakeup,
-                sc.morningProgram,
-                sc.chanting,
-                data.readingMinutes,
-                sc.reading,
-                data.hearingMinutes,
-                sc.hearing,
-                data.notesMinutes,
-                sc.notes,
-                sc.daySleep,
-                data.totalScore
-            ]);
-        } else {
-            excelData.push([formatDate(dateStr), 'No data', '', '', '', '', '', '', '', '', '', '', '']);
-        }
-    });
-    
-    // Weekly totals
-    const weeklyNotesScore = totalNotesMins >= 245 ? 175 : totalNotesScore;
-    const adjustedTotal = totalScore - totalNotesScore + weeklyNotesScore;
-    
-    excelData.push([]);
-    excelData.push(['WEEKLY TOTALS', '', '', '', '', 
-                    totalReadingMins, '', 
-                    totalHearingMins, '', 
-                    totalNotesMins, weeklyNotesScore, '', 
-                    totalScore]);
-    excelData.push(['ADJUSTED TOTAL (Notes Compensation)', '', '', '', '', '', '', '', '', '', '', '', adjustedTotal]);
-    excelData.push([totalNotesMins >= 245 ? '✓ Weekly notes target achieved!' : `Target remaining: ${245 - totalNotesMins} mins`]);
-    
-    // Create workbook
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet(excelData);
-    
-    // Styling
-    ws['!cols'] = [
-        {wch: 15}, {wch: 8}, {wch: 8}, {wch: 15}, {wch: 10}, 
-        {wch: 12}, {wch: 12}, {wch: 12}, {wch: 12}, 
-        {wch: 12}, {wch: 12}, {wch: 10}, {wch: 12}
-    ];
-    
-    // Header styling (row 1 and 2)
-    ws['A1'].s = {
-        font: { bold: true, sz: 16, color: { rgb: "FFFFFF" } },
-        fill: { fgColor: { rgb: "667eea" } },
-        alignment: { horizontal: "center" }
-    };
-    
-    ws['A2'].s = {
-        font: { bold: true, sz: 12 },
-        fill: { fgColor: { rgb: "87CEEB" } }
-    };
-    
-    // Column headers (row 4)
-    for (let col = 0; col < 13; col++) {
-        const cellAddr = XLSX.utils.encode_cell({ r: 3, c: col });
-        if (!ws[cellAddr]) ws[cellAddr] = {};
-        ws[cellAddr].s = {
-            font: { bold: true, color: { rgb: "FFFFFF" } },
-            fill: { fgColor: { rgb: "667eea" } },
-            alignment: { horizontal: "center" }
-        };
-    }
-    
-    // Conditional formatting for scores (simplified - background colors)
-    for (let row = 4; row < 4 + weekDates.length; row++) {
-        // Score columns: B, C, D, E, G, I, K, L, M
-        const scoreCols = [1, 2, 3, 4, 6, 8, 10, 11, 12];
-        scoreCols.forEach(col => {
-            const cellAddr = XLSX.utils.encode_cell({ r: row, c: col });
-            if (ws[cellAddr] && typeof ws[cellAddr].v === 'number') {
-                const score = ws[cellAddr].v;
-                let bgColor = 'FFCDD2'; // Light red (default)
-                
-                if (score >= 20) bgColor = 'C8E6C9'; // Light green
-                else if (score >= 15) bgColor = 'FFF9C4'; // Light yellow
-                else if (score >= 10) bgColor = 'FFE0B2'; // Light orange
-                
-                ws[cellAddr].s = {
-                    fill: { fgColor: { rgb: bgColor } },
-                    alignment: { horizontal: "center" }
-                };
-            }
-        });
-    }
-    
-    XLSX.utils.book_append_sheet(wb, ws, 'Weekly Report');
-    XLSX.writeFile(wb, `RAPD_Weekly_Report_${weekStart.toISOString().split('T')[0]}.xlsx`);
-}
-
-async function downloadMonthlyExcel(date) {
-    const year = date.getFullYear();
-    const month = date.getMonth();
-    const startDate = new Date(year, month, 1);
-    const endDate = new Date(year, month + 1, 0);
-    
-    const snapshot = await db.collection('users').doc(currentUser.uid)
-        .collection('sadhana')
-        .where(firebase.firestore.FieldPath.documentId(), '>=', startDate.toISOString().split('T')[0])
-        .where(firebase.firestore.FieldPath.documentId(), '<=', endDate.toISOString().split('T')[0])
-        .get();
-    
-    const monthName = date.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
-    
-    const excelData = [
-        ['RAPD SADHANA TRACKER - MONTHLY REPORT'],
-        [monthName],
-        [],
-        ['Date', 'Sleep', 'Wakeup', 'Morning Program', 'Chanting', 'Reading', 'Hearing', 'Notes', 'Day Sleep', 'Total Score', 'Percentage']
-    ];
-    
-    let totalScore = 0;
-    let daysPresent = 0;
-    
-    const sortedDocs = [];
-    snapshot.forEach(doc => sortedDocs.push({ id: doc.id, data: doc.data() }));
-    sortedDocs.sort((a, b) => a.id.localeCompare(b.id));
-    
-    sortedDocs.forEach(({ id, data }) => {
-        daysPresent++;
-        totalScore += data.totalScore;
-        const sc = data.scores;
-        
-        excelData.push([
-            formatDate(id),
-            sc.sleep,
-            sc.wakeup,
-            sc.morningProgram,
-            sc.chanting,
-            sc.reading,
-            sc.hearing,
-            sc.notes,
-            sc.daySleep,
-            data.totalScore,
-            `${data.dayPercent}%`
-        ]);
-    });
-    
-    const avgScore = daysPresent > 0 ? Math.round(totalScore / daysPresent) : 0;
-    
-    excelData.push([]);
-    excelData.push(['MONTHLY SUMMARY']);
-    excelData.push(['Total Score', totalScore]);
-    excelData.push(['Days Tracked', daysPresent]);
-    excelData.push(['Average Score', `${avgScore}/175 (${Math.round((avgScore/175)*100)}%)`]);
-    
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet(excelData);
-    
-    ws['!cols'] = Array(11).fill({wch: 12});
-    
-    // Styling
-    ws['A1'].s = {
-        font: { bold: true, sz: 16, color: { rgb: "FFFFFF" } },
-        fill: { fgColor: { rgb: "667eea" } },
-        alignment: { horizontal: "center" }
-    };
-    
-    ws['A2'].s = {
-        font: { bold: true, sz: 12 },
-        fill: { fgColor: { rgb: "87CEEB" } }
-    };
-    
-    XLSX.utils.book_append_sheet(wb, ws, 'Monthly Report');
-    XLSX.writeFile(wb, `RAPD_Monthly_Report_${monthName.replace(' ', '_')}.xlsx`);
-}
-
-// --- CHARTS ---
-let scoreChart = null;
-let activityChart = null;
-
+// --- 8. CHARTS ---
 async function generateCharts() {
     const period = document.getElementById('chart-period').value;
     
@@ -918,7 +511,10 @@ async function generateDailyCharts() {
         data[doc.id] = doc.data();
     });
     
-    const labels = dates.map(d => formatDate(d).split(' ')[0] + ' ' + formatDate(d).split(' ')[1]);
+    const labels = dates.map(d => {
+        const date = new Date(d);
+        return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+    });
     const scores = dates.map(d => data[d]?.totalScore || 0);
     const sleepScores = dates.map(d => data[d]?.scores?.sleep || 0);
     const wakeupScores = dates.map(d => data[d]?.scores?.wakeup || 0);
@@ -971,7 +567,7 @@ async function generateWeeklyCharts() {
             weekTotal += doc.data().totalScore || 0;
         });
         
-        labels.push(`Week ${formatDate(weekStart).split(' ')[0]}`);
+        labels.push(`Week ${weekStart.getDate()}/${weekStart.getMonth() + 1}`);
         scores.push(weekTotal);
     }
     
@@ -1005,7 +601,7 @@ async function generateMonthlyCharts() {
             monthTotal += doc.data().totalScore || 0;
         });
         
-        labels.push(month.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }));
+        labels.push(month.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }));
         scores.push(monthTotal);
     }
     
@@ -1026,19 +622,16 @@ function renderScoreChart(labels, data, maxScore) {
             datasets: [{
                 label: 'Total Score',
                 data: data,
-                borderColor: '#667eea',
-                backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                borderColor: '#4a90e2',
+                backgroundColor: 'rgba(74, 144, 226, 0.1)',
                 borderWidth: 3,
                 fill: true,
                 tension: 0.4,
                 pointRadius: 5,
                 pointHoverRadius: 8,
-                pointBackgroundColor: '#667eea',
+                pointBackgroundColor: '#4a90e2',
                 pointBorderColor: '#fff',
-                pointBorderWidth: 2,
-                pointHoverBackgroundColor: '#764ba2',
-                pointHoverBorderColor: '#fff',
-                pointHoverBorderWidth: 3
+                pointBorderWidth: 2
             }]
         },
         options: {
@@ -1051,37 +644,19 @@ function renderScoreChart(labels, data, maxScore) {
             plugins: {
                 legend: {
                     display: true,
-                    position: 'top',
-                    labels: {
-                        font: {
-                            size: 14,
-                            weight: 'bold'
-                        },
-                        color: '#333'
-                    }
+                    position: 'top'
                 },
                 tooltip: {
                     enabled: true,
                     backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                    titleColor: '#fff',
-                    bodyColor: '#fff',
-                    borderColor: '#667eea',
-                    borderWidth: 2,
                     padding: 12,
-                    displayColors: true,
                     callbacks: {
-                        title: function(context) {
-                            return context[0].label;
-                        },
                         label: function(context) {
                             const score = context.parsed.y;
                             const percentage = maxScore ? Math.round((score / maxScore) * 100) : 0;
                             return [
                                 `Score: ${score}${maxScore ? '/' + maxScore : ''}`,
-                                percentage ? `Percentage: ${percentage}%` : '',
-                                score >= (maxScore * 0.8) ? '🌟 Excellent!' : 
-                                score >= (maxScore * 0.6) ? '👍 Good!' : 
-                                score >= (maxScore * 0.4) ? '📈 Keep going!' : '💪 You can do better!'
+                                percentage ? `Percentage: ${percentage}%` : ''
                             ].filter(Boolean);
                         }
                     }
@@ -1090,28 +665,7 @@ function renderScoreChart(labels, data, maxScore) {
             scales: {
                 y: {
                     beginAtZero: true,
-                    max: maxScore,
-                    ticks: {
-                        stepSize: maxScore ? maxScore / 5 : undefined,
-                        font: {
-                            size: 12
-                        },
-                        color: '#666'
-                    },
-                    grid: {
-                        color: 'rgba(0, 0, 0, 0.05)'
-                    }
-                },
-                x: {
-                    ticks: {
-                        font: {
-                            size: 11
-                        },
-                        color: '#666'
-                    },
-                    grid: {
-                        display: false
-                    }
+                    max: maxScore
                 }
             }
         }
@@ -1136,17 +690,17 @@ function renderActivityChart(labels, datasets) {
     };
     
     const activityNames = {
-        sleep: 'Sleep Time',
-        wakeup: 'Wakeup Time',
+        sleep: 'Sleep',
+        wakeup: 'Wakeup',
         morning: 'Morning Program',
         chanting: 'Chanting',
         reading: 'Reading',
         hearing: 'Hearing',
-        notes: 'Notes Revision'
+        notes: 'Notes'
     };
     
     const chartDatasets = Object.keys(datasets).map(key => ({
-        label: activityNames[key] || key,
+        label: activityNames[key],
         data: datasets[key],
         borderColor: colors[key].border,
         backgroundColor: colors[key].bg,
@@ -1154,13 +708,7 @@ function renderActivityChart(labels, datasets) {
         fill: true,
         tension: 0.4,
         pointRadius: 4,
-        pointHoverRadius: 7,
-        pointBackgroundColor: colors[key].border,
-        pointBorderColor: '#fff',
-        pointBorderWidth: 2,
-        pointHoverBackgroundColor: colors[key].border,
-        pointHoverBorderColor: '#fff',
-        pointHoverBorderWidth: 3
+        pointHoverRadius: 7
     }));
     
     activityChart = new Chart(ctx, {
@@ -1179,86 +727,77 @@ function renderActivityChart(labels, datasets) {
             plugins: {
                 legend: {
                     display: true,
-                    position: 'top',
-                    labels: {
-                        font: {
-                            size: 12
-                        },
-                        color: '#333',
-                        padding: 15,
-                        usePointStyle: true,
-                        pointStyle: 'circle'
-                    }
+                    position: 'top'
                 },
                 tooltip: {
                     enabled: true,
                     backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                    titleColor: '#fff',
-                    bodyColor: '#fff',
-                    borderColor: '#667eea',
-                    borderWidth: 2,
-                    padding: 12,
-                    displayColors: true,
-                    callbacks: {
-                        title: function(context) {
-                            return context[0].label;
-                        },
-                        label: function(context) {
-                            const activity = context.dataset.label;
-                            const score = context.parsed.y;
-                            return [
-                                `${activity}: ${score}/25`,
-                                score >= 20 ? '🌟 Excellent!' : 
-                                score >= 15 ? '👍 Very Good!' : 
-                                score >= 10 ? '📈 Good!' : 
-                                score >= 5 ? '💪 Keep improving!' : '⚠️ Needs attention'
-                            ];
-                        },
-                        footer: function(context) {
-                            const total = context.reduce((sum, item) => sum + item.parsed.y, 0);
-                            return `Total for day: ${total}`;
-                        }
-                    }
+                    padding: 12
                 }
             },
             scales: {
                 y: {
                     beginAtZero: true,
-                    max: 25,
-                    ticks: {
-                        stepSize: 5,
-                        font: {
-                            size: 12
-                        },
-                        color: '#666'
-                    },
-                    grid: {
-                        color: 'rgba(0, 0, 0, 0.05)'
-                    }
-                },
-                x: {
-                    ticks: {
-                        font: {
-                            size: 11
-                        },
-                        color: '#666'
-                    },
-                    grid: {
-                        display: false
-                    }
+                    max: 25
                 }
             }
         }
     });
 }
 
-document.getElementById('refresh-charts-btn').onclick = () => {
-    generateCharts();
+// --- 9. MISC FUNCTIONS ---
+function setupDateSelect() {
+    const s = document.getElementById('sadhana-date'); 
+    if (!s) return; 
+    s.innerHTML = '';
+    
+    for (let i = 0; i < 2; i++) {
+        const d = new Date(); 
+        d.setDate(d.getDate() - i);
+        const iso = d.toISOString().split('T')[0];
+        const opt = document.createElement('option'); 
+        opt.value = iso; 
+        opt.textContent = iso;
+        s.appendChild(opt);
+    }
+}
+
+document.getElementById('profile-form').onsubmit = async (e) => {
+    e.preventDefault();
+    const data = { 
+        name: document.getElementById('profile-name').value.trim(),
+        role: userProfile?.role || 'user' 
+    };
+    await db.collection('users').doc(currentUser.uid).set(data, { merge: true });
+    alert("Name saved!"); 
+    location.reload();
 };
 
-// Initial chart load
-setTimeout(() => {
-    if (currentUser) {
-        generateCharts();
+document.getElementById('login-form').onsubmit = async (e) => { 
+    e.preventDefault();
+    const rememberMe = document.getElementById('remember-me').checked;
+    
+    try {
+        // Set persistence before login
+        if (rememberMe) {
+            await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+        } else {
+            await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
+        }
+        
+        await auth.signInWithEmailAndPassword(
+            document.getElementById('login-email').value, 
+            document.getElementById('login-password').value
+        );
+    } catch (err) {
+        alert(err.message);
     }
-}, 1000);
+};
+
+document.getElementById('logout-btn').onclick = () => auth.signOut();
+
+window.openProfileEdit = () => { 
+    document.getElementById('profile-name').value = userProfile.name; 
+    document.getElementById('cancel-edit').classList.remove('hidden'); 
+    showSection('profile'); 
+};
