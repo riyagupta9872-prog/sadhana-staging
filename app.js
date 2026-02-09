@@ -217,22 +217,23 @@ function showSection(section) {
     document.getElementById(`${section}-section`).classList.remove('hidden');
 }
 
-function switchTab(tabName) {
-    // Update buttons
-    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-    event.target.classList.add('active');
+window.switchTab = (t) => {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     
-    // Update content
-    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-    document.getElementById(`${tabName}-tab`).classList.add('active');
-    
-    // Load data for specific tabs
-    if (tabName === 'reports') {
-        loadReports(currentUser.uid, 'weekly-reports-container');
-    } else if (tabName === 'charts') {
-        generateCharts();
+    const tabContent = document.getElementById(t + '-tab');
+    if (tabContent) {
+        tabContent.classList.remove('hidden');
+        tabContent.classList.add('active');
     }
-}
+    
+    const btn = document.querySelector(`button[onclick*="switchTab('${t}')"]`);
+    if (btn) btn.classList.add('active');
+    
+    if (t === 'reports' && currentUser) loadReports(currentUser.uid, 'weekly-reports-container');
+    if (t === 'charts' && currentUser) generateCharts();
+};
 
 // --- 5. AUTH STATE ---
 auth.onAuthStateChanged(async (user) => {
@@ -258,17 +259,25 @@ auth.onAuthStateChanged(async (user) => {
 });
 
 // --- 6. SCORING & FORM ---
-document.getElementById('sadhana-form').onsubmit = async (e) => {
-    e.preventDefault();
-    const date = document.getElementById('sadhana-date').value;
-    const slp = document.getElementById('sleep-time').value;
-    const wak = document.getElementById('wakeup-time').value;
-    const mpTime = document.getElementById('morning-program-time').value;
-    const chn = document.getElementById('chanting-time').value;
-    const rMin = parseInt(document.getElementById('reading-mins').value) || 0;
-    const hMin = parseInt(document.getElementById('hearing-mins').value) || 0;
-    const nMin = parseInt(document.getElementById('notes-mins').value) || 0;
-    const dsMin = parseInt(document.getElementById('day-sleep-minutes').value) || 0;
+const sadhanaForm = document.getElementById('sadhana-form');
+if (sadhanaForm) {
+    sadhanaForm.onsubmit = async (e) => {
+        e.preventDefault();
+        
+        if (!currentUser) {
+            alert('Please login first');
+            return;
+        }
+        
+        const date = document.getElementById('sadhana-date').value;
+        const slp = document.getElementById('sleep-time').value;
+        const wak = document.getElementById('wakeup-time').value;
+        const mpTime = document.getElementById('morning-program-time').value;
+        const chn = document.getElementById('chanting-time').value;
+        const rMin = parseInt(document.getElementById('reading-mins').value) || 0;
+        const hMin = parseInt(document.getElementById('hearing-mins').value) || 0;
+        const nMin = parseInt(document.getElementById('notes-mins').value) || 0;
+        const dsMin = parseInt(document.getElementById('day-sleep-minutes').value) || 0;
     
     const sc = { 
         sleep: -5, 
@@ -375,7 +384,8 @@ document.getElementById('sadhana-form').onsubmit = async (e) => {
     } catch (error) {
         alert('Error saving: ' + error.message);
     }
-};
+    };
+}
 
 // --- 7. REPORTS ---
 async function loadReports(userId, containerId) {
@@ -762,37 +772,43 @@ function setupDateSelect() {
     }
 }
 
-document.getElementById('profile-form').onsubmit = async (e) => {
-    e.preventDefault();
-    const data = { 
-        name: document.getElementById('profile-name').value.trim(),
-        role: userProfile?.role || 'user' 
+const profileForm = document.getElementById('profile-form');
+if (profileForm) {
+    profileForm.onsubmit = async (e) => {
+        e.preventDefault();
+        const data = { 
+            name: document.getElementById('profile-name').value.trim(),
+            role: userProfile?.role || 'user' 
+        };
+        await db.collection('users').doc(currentUser.uid).set(data, { merge: true });
+        alert("Name saved!"); 
+        location.reload();
     };
-    await db.collection('users').doc(currentUser.uid).set(data, { merge: true });
-    alert("Name saved!"); 
-    location.reload();
-};
+}
 
-document.getElementById('login-form').onsubmit = async (e) => { 
-    e.preventDefault();
-    const rememberMe = document.getElementById('remember-me').checked;
-    
-    try {
-        // Set persistence before login
-        if (rememberMe) {
-            await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-        } else {
-            await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
-        }
+const loginForm = document.getElementById('login-form');
+if (loginForm) {
+    loginForm.onsubmit = async (e) => { 
+        e.preventDefault();
+        const rememberMe = document.getElementById('remember-me').checked;
         
-        await auth.signInWithEmailAndPassword(
-            document.getElementById('login-email').value, 
-            document.getElementById('login-password').value
-        );
-    } catch (err) {
-        alert(err.message);
-    }
-};
+        try {
+            // Set persistence before login
+            if (rememberMe) {
+                await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+            } else {
+                await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
+            }
+            
+            await auth.signInWithEmailAndPassword(
+                document.getElementById('login-email').value, 
+                document.getElementById('login-password').value
+            );
+        } catch (err) {
+            alert(err.message);
+        }
+    };
+}
 
 document.getElementById('logout-btn').onclick = () => auth.signOut();
 
