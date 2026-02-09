@@ -394,9 +394,11 @@ async function loadReports(userId, containerId) {
     
     if (snap.empty) {
         container.innerHTML = '<p style="text-align:center; color:#999; padding:40px;">No sadhana data yet. Start tracking!</p>';
+        document.getElementById('four-week-comparison').innerHTML = '';
         return;
     }
     
+    // Organize data by weeks
     const weeksData = {};
     snap.forEach(doc => {
         const weekInfo = getWeekInfo(doc.id);
@@ -412,6 +414,10 @@ async function loadReports(userId, containerId) {
     
     const sortedWeeks = Object.keys(weeksData).sort((a, b) => b.localeCompare(a));
     
+    // Generate 4-week comparison table
+    generate4WeekComparison(sortedWeeks.slice(0, 4), weeksData);
+    
+    // Generate detailed weekly reports with tables
     let html = '';
     sortedWeeks.forEach(sunStr => {
         const week = weeksData[sunStr];
@@ -423,10 +429,18 @@ async function loadReports(userId, containerId) {
             readingMins: 0,
             hearingMins: 0,
             notesMins: 0,
-            notesMarks: 0
+            notesMarks: 0,
+            sleepMarks: 0,
+            wakeupMarks: 0,
+            morningMarks: 0,
+            chantingMarks: 0,
+            readingMarks: 0,
+            hearingMarks: 0,
+            daySleepMarks: 0
         };
         
-        let dailyHTML = '';
+        // Build daily table
+        let tableRows = '';
         for (let i = 0; i < 7; i++) {
             const currentDate = new Date(weekStart);
             currentDate.setDate(currentDate.getDate() + i);
@@ -438,21 +452,30 @@ async function loadReports(userId, containerId) {
             weekTotals.hearingMins += entry.hearingMinutes || 0;
             weekTotals.notesMins += entry.notesMinutes || 0;
             weekTotals.notesMarks += entry.scores?.notes || 0;
+            weekTotals.sleepMarks += entry.scores?.sleep || 0;
+            weekTotals.wakeupMarks += entry.scores?.wakeup || 0;
+            weekTotals.morningMarks += entry.scores?.morningProgram || 0;
+            weekTotals.chantingMarks += entry.scores?.chanting || 0;
+            weekTotals.readingMarks += entry.scores?.reading || 0;
+            weekTotals.hearingMarks += entry.scores?.hearing || 0;
+            weekTotals.daySleepMarks += entry.scores?.daySleep || 0;
             
-            const scoreClass = (entry.totalScore ?? 0) < 0 ? 'score-negative' : '';
-            dailyHTML += `
-                <div class="daily-entry">
-                    <div class="daily-meta">
-                        <span><strong>${dayNames[i]} ${currentDate.getDate()}</strong></span>
-                        <span class="${scoreClass}">Total: ${entry.totalScore ?? 0}/175</span>
-                    </div>
-                    <div class="activity-details">
-                        <span>Sleep: ${entry.sleepTime} (${entry.scores?.sleep ?? 0}) | Wake: ${entry.wakeupTime} (${entry.scores?.wakeup ?? 0})</span>
-                        <span>MP: ${entry.morningProgramTime || 'NR'} (${entry.scores?.morningProgram ?? 0}) | Chant: ${entry.chantingTime} (${entry.scores?.chanting ?? 0})</span>
-                        <span>Read: ${entry.readingMinutes || 0}m (${entry.scores?.reading ?? 0}) | Hear: ${entry.hearingMinutes || 0}m (${entry.scores?.hearing ?? 0})</span>
-                        <span>Notes: ${entry.notesMinutes || 0}m (${entry.scores?.notes ?? 0}) | Day Sleep: ${entry.daySleepMinutes || 0}m (${entry.scores?.daySleep ?? 0})</span>
-                    </div>
-                </div>
+            const scoreClass = (entry.totalScore ?? 0) >= 140 ? 'score-positive' : 
+                              (entry.totalScore ?? 0) >= 100 ? 'score-neutral' : 'score-negative';
+            
+            tableRows += `
+                <tr>
+                    <td><strong>${dayNames[i]} ${currentDate.getDate()}</strong></td>
+                    <td>${entry.sleepTime} <span style="color: ${entry.scores?.sleep >= 20 ? 'green' : 'red'}">(${entry.scores?.sleep})</span></td>
+                    <td>${entry.wakeupTime} <span style="color: ${entry.scores?.wakeup >= 20 ? 'green' : 'red'}">(${entry.scores?.wakeup})</span></td>
+                    <td>${entry.morningProgramTime || 'NR'} <span style="color: ${entry.scores?.morningProgram >= 20 ? 'green' : 'red'}">(${entry.scores?.morningProgram ?? 0})</span></td>
+                    <td>${entry.chantingTime} <span style="color: ${entry.scores?.chanting >= 20 ? 'green' : 'red'}">(${entry.scores?.chanting})</span></td>
+                    <td>${entry.readingMinutes}m (${entry.scores?.reading})</td>
+                    <td>${entry.hearingMinutes}m (${entry.scores?.hearing})</td>
+                    <td>${entry.notesMinutes}m (${entry.scores?.notes})</td>
+                    <td>${entry.daySleepMinutes}m (${entry.scores?.daySleep})</td>
+                    <td class="${scoreClass}"><strong>${entry.totalScore}/175</strong></td>
+                </tr>
             `;
         }
         
@@ -464,7 +487,7 @@ async function loadReports(userId, containerId) {
         const adjustedTotal = weekTotals.total - weekTotals.notesMarks + adjustedNotesMarks;
         const weekPercent = Math.round((adjustedTotal / 1225) * 100);
         
-        const weekClass = adjustedTotal < 245 ? 'low-score' : '';
+        const weekClass = adjustedTotal < 735 ? 'low-score' : '';
         
         html += `
             <div class="week-card ${weekClass}">
@@ -473,12 +496,41 @@ async function loadReports(userId, containerId) {
                     <span>${adjustedTotal}/1225 (${weekPercent}%) <span class="toggle-icon">▶</span></span>
                 </div>
                 <div class="week-content">
-                    ${dailyHTML}
-                    <div style="margin-top: 15px; padding: 10px; background: #f8f9fa; border-radius: 4px;">
-                        <strong>Weekly Summary:</strong><br>
-                        Reading: ${weekTotals.readingMins} mins | Hearing: ${weekTotals.hearingMins} mins<br>
-                        Notes: ${weekTotals.notesMins} mins → ${adjustedNotesMarks} marks ${weekTotals.notesMins >= 245 ? '✓ Full bonus!' : ''}<br>
-                        <strong>Total: ${adjustedTotal}/1225 (${weekPercent}%)</strong>
+                    <table class="daily-table">
+                        <thead>
+                            <tr>
+                                <th>Day</th>
+                                <th>Sleep</th>
+                                <th>Wake</th>
+                                <th>MP</th>
+                                <th>Chant</th>
+                                <th>Read</th>
+                                <th>Hear</th>
+                                <th>Notes</th>
+                                <th>D.Sleep</th>
+                                <th>Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${tableRows}
+                        </tbody>
+                    </table>
+                    
+                    <div style="margin-top: 15px; padding: 15px; background: #f0f4ff; border-radius: 8px; border-left: 4px solid var(--secondary);">
+                        <strong style="color: var(--primary);">📊 Weekly Summary:</strong><br>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 10px;">
+                            <div>Sleep: <strong>${weekTotals.sleepMarks}</strong></div>
+                            <div>Wakeup: <strong>${weekTotals.wakeupMarks}</strong></div>
+                            <div>Morning: <strong>${weekTotals.morningMarks}</strong></div>
+                            <div>Chanting: <strong>${weekTotals.chantingMarks}</strong></div>
+                            <div>Reading: <strong>${weekTotals.readingMins}m (${weekTotals.readingMarks})</strong></div>
+                            <div>Hearing: <strong>${weekTotals.hearingMins}m (${weekTotals.hearingMarks})</strong></div>
+                            <div>Notes: <strong>${weekTotals.notesMins}m → ${adjustedNotesMarks} ${weekTotals.notesMins >= 245 ? '✓' : ''}</strong></div>
+                            <div>Day Sleep: <strong>${weekTotals.daySleepMarks}</strong></div>
+                        </div>
+                        <div style="margin-top: 10px; padding-top: 10px; border-top: 2px solid var(--secondary);">
+                            <strong style="color: var(--primary); font-size: 1.1em;">Total: ${adjustedTotal}/1225 (${weekPercent}%)</strong>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -486,6 +538,92 @@ async function loadReports(userId, containerId) {
     });
     
     container.innerHTML = html;
+}
+
+// Generate 4-week comparison table
+function generate4WeekComparison(weeks, weeksData) {
+    const container = document.getElementById('four-week-comparison');
+    if (!container) return;
+    
+    if (weeks.length === 0) {
+        container.innerHTML = '<p style="color: #999; text-align: center;">Not enough data for comparison</p>';
+        return;
+    }
+    
+    let tableHTML = `
+        <table class="comparison-table">
+            <thead>
+                <tr>
+                    <th>Week</th>
+                    <th>Total Score</th>
+                    <th>Percentage</th>
+                    <th>Trend</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+    
+    let previousPercent = null;
+    weeks.forEach(sunStr => {
+        const week = weeksData[sunStr];
+        const weekStart = new Date(week.sunStr);
+        
+        let weekTotal = 0;
+        let weekNotesMins = 0;
+        let weekNotesMarks = 0;
+        
+        for (let i = 0; i < 7; i++) {
+            const currentDate = new Date(weekStart);
+            currentDate.setDate(currentDate.getDate() + i);
+            const dateStr = currentDate.toISOString().split('T')[0];
+            const entry = week.days[dateStr] || getNRData(dateStr);
+            
+            weekTotal += entry.totalScore ?? 0;
+            weekNotesMins += entry.notesMinutes || 0;
+            weekNotesMarks += entry.scores?.notes || 0;
+        }
+        
+        // Apply weekly notes compensation
+        let adjustedNotesMarks = weekNotesMarks;
+        if (weekNotesMins >= 245) {
+            adjustedNotesMarks = 175;
+        }
+        const adjustedTotal = weekTotal - weekNotesMarks + adjustedNotesMarks;
+        const weekPercent = Math.round((adjustedTotal / 1225) * 100);
+        
+        // Calculate trend
+        let trendIcon = '—';
+        let trendColor = '#666';
+        if (previousPercent !== null) {
+            const diff = weekPercent - previousPercent;
+            if (diff > 0) {
+                trendIcon = `▲ +${diff}%`;
+                trendColor = 'green';
+            } else if (diff < 0) {
+                trendIcon = `▼ ${diff}%`;
+                trendColor = 'red';
+            }
+        }
+        previousPercent = weekPercent;
+        
+        const percentColor = weekPercent >= 80 ? 'green' : weekPercent >= 60 ? 'orange' : 'red';
+        
+        tableHTML += `
+            <tr>
+                <td><strong>${week.label.split('_')[0]}</strong></td>
+                <td><strong>${adjustedTotal}/1225</strong></td>
+                <td style="color: ${percentColor}; font-weight: bold; font-size: 1.1em;">${weekPercent}%</td>
+                <td style="color: ${trendColor}; font-weight: bold;">${trendIcon}</td>
+            </tr>
+        `;
+    });
+    
+    tableHTML += `
+            </tbody>
+        </table>
+    `;
+    
+    container.innerHTML = tableHTML;
 }
 
 // --- 8. CHARTS ---
