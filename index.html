@@ -28,6 +28,17 @@
         .week-header { padding: 15px; cursor: pointer; display: flex; justify-content: space-between; font-weight: bold; }
         .week-content { padding: 15px; border-top: 1px solid #eee; display: none; }
         .week-content.expanded { display: block; }
+        .comparison-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        .comparison-table th, .comparison-table td { border: 1px solid #ddd; padding: 12px; text-align: center; }
+        .comparison-table th { background: var(--secondary); color: white; font-weight: 600; }
+        .comparison-table tr:hover { background: #f5f5f5; }
+        .daily-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9em; }
+        .daily-table th, .daily-table td { border: 1px solid #eee; padding: 8px; text-align: left; }
+        .daily-table th { background: #f8f9fa; font-weight: 600; }
+        .daily-table tr:hover { background: #f9f9f9; }
+        .score-positive { color: var(--success); font-weight: bold; }
+        .score-negative { color: var(--danger); font-weight: bold; }
+        .score-neutral { color: #666; }
     </style>
 </head>
 <body>
@@ -99,6 +110,15 @@
 
             <div id="reports-tab" class="tab-content hidden">
                 <button onclick="downloadUserExcel(currentUser.uid, userProfile.name)" style="background:var(--success); margin-bottom:15px">Download My History (Excel)</button>
+                
+                <!-- 4-Week Comparison -->
+                <div class="card" style="margin-bottom: 20px;">
+                    <h3 style="margin-bottom: 15px; color: var(--primary);">Last 4 Weeks Comparison</h3>
+                    <div id="four-week-comparison" style="overflow-x: auto;"></div>
+                </div>
+
+                <!-- Weekly Details -->
+                <h3 style="margin-bottom: 15px; color: var(--primary);">Detailed Weekly Reports</h3>
                 <div id="weekly-reports-container"></div>
             </div>
 
