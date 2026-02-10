@@ -36,7 +36,7 @@ function getNRData(date) {
     return {
         id: date, totalScore: -40, dayPercent: -23,
         sleepTime: "NR", wakeupTime: "NR", morningProgramTime: "NR", chantingTime: "NR",
-        readingMinutes: 0, hearingMinutes: 0, notesMinutes: 0, daySleepMinutes: 0,
+        readingMinutes: "NR", hearingMinutes: "NR", notesMinutes: "NR", daySleepMinutes: "NR",
         scores: { sleep: -5, wakeup: -5, morningProgram: -5, chanting: -5, reading: -5, hearing: -5, notes: -5, daySleep: 0 }
     };
 }
@@ -78,13 +78,13 @@ window.downloadUserExcel = async (userId, userName) => {
             const week = weeksData[sunStr];
             
             // Week Header Row (merged)
-            dataArray.push([`WEEK: ${week.label}`, '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
+            dataArray.push([`WEEK: ${week.label}`, '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
             
-            // Column Headers
+            // Column Headers (matching image format)
             dataArray.push([
-                'Date', 'Bed', 'M', 'Wake', 'M', 'MP Time', 'M', 'Chant', 'M', 
-                'Read(m)', 'M', 'Hear(m)', 'M', 'Notes(m)', 'M', 
-                'Day Sleep(m)', 'M', 'Total', '%'
+                'Day', '1.To Bed', 'Mks', '2. Wake Up', 'Mks', '3. Japa', 'Mks', 
+                '4. MP', 'Mks', '5. DS', 'Mks', '6. Pathan', 'Mks', 
+                '7. Sarwan', 'Mks', '8. Ntes Rev.', 'Mks', 'Day Wise'
             ]);
 
             // Daily rows (Sun to Sat)
@@ -107,7 +107,12 @@ window.downloadUserExcel = async (userId, userName) => {
 
                 const entry = week.days[dateStr] || getNRData(dateStr);
 
-                // Add to weekly totals
+                // Add to weekly totals (handle NR)
+                const readMins = entry.readingMinutes === 'NR' ? 0 : (entry.readingMinutes || 0);
+                const hearMins = entry.hearingMinutes === 'NR' ? 0 : (entry.hearingMinutes || 0);
+                const notesMins = entry.notesMinutes === 'NR' ? 0 : (entry.notesMinutes || 0);
+                const dsMins = entry.daySleepMinutes === 'NR' ? 0 : (entry.daySleepMinutes || 0);
+                
                 weekTotals.sleepM += entry.scores?.sleep ?? 0;
                 weekTotals.wakeupM += entry.scores?.wakeup ?? 0;
                 weekTotals.morningProgramM += entry.scores?.morningProgram ?? 0;
@@ -116,10 +121,10 @@ window.downloadUserExcel = async (userId, userName) => {
                 weekTotals.hearingM += entry.scores?.hearing ?? 0;
                 weekTotals.notesM += entry.scores?.notes ?? 0;
                 weekTotals.daySleepM += entry.scores?.daySleep ?? 0;
-                weekTotals.readingMins += entry.readingMinutes || 0;
-                weekTotals.hearingMins += entry.hearingMinutes || 0;
-                weekTotals.notesMins += entry.notesMinutes || 0;
-                weekTotals.daySleepMins += entry.daySleepMinutes || 0;
+                weekTotals.readingMins += readMins;
+                weekTotals.hearingMins += hearMins;
+                weekTotals.notesMins += notesMins;
+                weekTotals.daySleepMins += dsMins;
                 weekTotals.total += entry.totalScore ?? 0;
 
                 dataArray.push([
@@ -128,19 +133,18 @@ window.downloadUserExcel = async (userId, userName) => {
                     entry.scores?.sleep ?? 0,
                     entry.wakeupTime || 'NR',
                     entry.scores?.wakeup ?? 0,
-                    entry.morningProgramTime || 'NR',
-                    entry.scores?.morningProgram ?? 0,
                     entry.chantingTime || 'NR',
                     entry.scores?.chanting ?? 0,
-                    entry.readingMinutes || 0,
-                    entry.scores?.reading ?? 0,
-                    entry.hearingMinutes || 0,
-                    entry.scores?.hearing ?? 0,
-                    entry.notesMinutes || 0,
-                    entry.scores?.notes ?? 0,
-                    entry.daySleepMinutes || 0,
+                    entry.morningProgramTime || 'NR',
+                    entry.scores?.morningProgram ?? 0,
+                    entry.daySleepMinutes !== 'NR' ? entry.daySleepMinutes : 'NR',
                     entry.scores?.daySleep ?? 0,
-                    entry.totalScore ?? 0,
+                    entry.readingMinutes !== 'NR' ? entry.readingMinutes : 'NR',
+                    entry.scores?.reading ?? 0,
+                    entry.hearingMinutes !== 'NR' ? entry.hearingMinutes : 'NR',
+                    entry.scores?.hearing ?? 0,
+                    entry.notesMinutes !== 'NR' ? entry.notesMinutes : 'NR',
+                    entry.scores?.notes ?? 0,
                     (entry.dayPercent ?? 0) + '%'
                 ]);
             }
@@ -152,33 +156,57 @@ window.downloadUserExcel = async (userId, userName) => {
             }
             const adjustedTotal = weekTotals.total - weekTotals.notesM + adjustedNotesM;
 
-            // Weekly Total Row
+            // Weekly Total Row (Total/1225)
             const weekPercent = Math.round((adjustedTotal / 1225) * 100);
             dataArray.push([
-                'WEEKLY TOTAL',
+                'Total/1225',
                 '',
                 weekTotals.sleepM,
                 '',
                 weekTotals.wakeupM,
                 '',
+                weekTotals.chantingM,
+                '',
                 weekTotals.morningProgramM,
                 '',
-                weekTotals.chantingM,
+                weekTotals.daySleepM,
                 weekTotals.readingMins,
                 weekTotals.readingM,
                 weekTotals.hearingMins,
                 weekTotals.hearingM,
                 weekTotals.notesMins,
                 adjustedNotesM,
-                weekTotals.daySleepMins,
-                weekTotals.daySleepM,
-                adjustedTotal,
-                weekPercent + '%'
+                ''
+            ]);
+            
+            // Sadhna % Row
+            dataArray.push([
+                'Sadhna %',
+                '',
+                Math.round((weekTotals.sleepM/175)*100) + '%',
+                '',
+                Math.round((weekTotals.wakeupM/175)*100) + '%',
+                '',
+                Math.round((weekTotals.chantingM/175)*100) + '%',
+                '',
+                Math.round((weekTotals.morningProgramM/175)*100) + '%',
+                '',
+                Math.round((weekTotals.daySleepM/70)*100) + '%',
+                '',
+                Math.round((weekTotals.readingM/175)*100) + '%',
+                '',
+                Math.round((weekTotals.hearingM/175)*100) + '%',
+                '',
+                Math.round((adjustedNotesM/175)*100) + '%',
+                ''
             ]);
 
-            // Weekly Percentage Summary Row
+            // OVERALL Row
             dataArray.push([
-                `WEEKLY PERCENTAGE: ${adjustedTotal} / 1225 = ${weekPercent}%${weekTotals.notesMins >= 245 ? ' ✓ Notes bonus applied!' : ''}`,
+                'OVERALL',
+                weekPercent + '%',
+                '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
+            ]);
                 '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
             ]);
 
@@ -350,12 +378,12 @@ if (sadhanaForm) {
     sc.reading = getActScore(rMin);
     sc.hearing = getActScore(hMin);
     
-    // Notes Revision (35 mins target for 25 marks)
+    // Notes Revision (0-4: -5, 5-9: 0, 10-14: 5, 15-19: 10, 20-29: 15, 30-34: 20, 35+: 25)
     if (nMin >= 35) sc.notes = 25;
     else if (nMin >= 30) sc.notes = 20;
-    else if (nMin >= 25) sc.notes = 15;
-    else if (nMin >= 20) sc.notes = 10;
-    else if (nMin >= 15) sc.notes = 5;
+    else if (nMin >= 20) sc.notes = 15;
+    else if (nMin >= 15) sc.notes = 10;
+    else if (nMin >= 10) sc.notes = 5;
     else if (nMin >= 5) sc.notes = 0;
     else sc.notes = -5;
     
@@ -385,6 +413,15 @@ if (sadhanaForm) {
         alert('Error saving: ' + error.message);
     }
     };
+}
+
+function getScoreBackground(score) {
+    if (score === null || score === undefined) return '#ffcdd2'; // Light red for undefined
+    if (score >= 20) return '#c8e6c9'; // Light green
+    if (score >= 15) return '#fff9c4'; // Light yellow
+    if (score >= 10) return '#ffe0b2'; // Light orange
+    if (score >= 0) return '#ffebee'; // Very light red
+    return '#ffcdd2'; // Light red for negative
 }
 
 // --- 7. REPORTS ---
@@ -439,7 +476,7 @@ async function loadReports(userId, containerId) {
             daySleepMarks: 0
         };
         
-        // Build daily table
+        // Build daily table (matching image format)
         let tableRows = '';
         for (let i = 0; i < 7; i++) {
             const currentDate = new Date(weekStart);
@@ -448,9 +485,9 @@ async function loadReports(userId, containerId) {
             const entry = week.days[dateStr] || getNRData(dateStr);
             
             weekTotals.total += entry.totalScore ?? 0;
-            weekTotals.readingMins += entry.readingMinutes || 0;
-            weekTotals.hearingMins += entry.hearingMinutes || 0;
-            weekTotals.notesMins += entry.notesMinutes || 0;
+            weekTotals.readingMins += (entry.readingMinutes === 'NR' ? 0 : entry.readingMinutes) || 0;
+            weekTotals.hearingMins += (entry.hearingMinutes === 'NR' ? 0 : entry.hearingMinutes) || 0;
+            weekTotals.notesMins += (entry.notesMinutes === 'NR' ? 0 : entry.notesMinutes) || 0;
             weekTotals.notesMarks += entry.scores?.notes || 0;
             weekTotals.sleepMarks += entry.scores?.sleep || 0;
             weekTotals.wakeupMarks += entry.scores?.wakeup || 0;
@@ -460,23 +497,32 @@ async function loadReports(userId, containerId) {
             weekTotals.hearingMarks += entry.scores?.hearing || 0;
             weekTotals.daySleepMarks += entry.scores?.daySleep || 0;
             
-            const scoreClass = (entry.totalScore ?? 0) >= 140 ? 'score-positive' : 
-                              (entry.totalScore ?? 0) >= 100 ? 'score-neutral' : 'score-negative';
+            const dayPercent = entry.dayPercent ?? -23;
+            const percentColor = dayPercent >= 80 ? 'green' : dayPercent >= 60 ? 'orange' : 'red';
             
             tableRows += `
                 <tr>
                     <td><strong>${dayNames[i]} ${currentDate.getDate()}</strong></td>
-                    <td>${entry.sleepTime} <span style="color: ${entry.scores?.sleep >= 20 ? 'green' : 'red'}">(${entry.scores?.sleep})</span></td>
-                    <td>${entry.wakeupTime} <span style="color: ${entry.scores?.wakeup >= 20 ? 'green' : 'red'}">(${entry.scores?.wakeup})</span></td>
-                    <td>${entry.morningProgramTime || 'NR'} <span style="color: ${entry.scores?.morningProgram >= 20 ? 'green' : 'red'}">(${entry.scores?.morningProgram ?? 0})</span></td>
-                    <td>${entry.chantingTime} <span style="color: ${entry.scores?.chanting >= 20 ? 'green' : 'red'}">(${entry.scores?.chanting})</span></td>
-                    <td>${entry.readingMinutes}m (${entry.scores?.reading})</td>
-                    <td>${entry.hearingMinutes}m (${entry.scores?.hearing})</td>
-                    <td>${entry.notesMinutes}m (${entry.scores?.notes})</td>
-                    <td>${entry.daySleepMinutes}m (${entry.scores?.daySleep})</td>
-                    <td class="${scoreClass}"><strong>${entry.totalScore}/175</strong></td>
+                    <td>${entry.sleepTime}</td>
+                    <td style="background: ${getScoreBackground(entry.scores?.sleep)}; font-weight: bold;">${entry.scores?.sleep}</td>
+                    <td>${entry.wakeupTime}</td>
+                    <td style="background: ${getScoreBackground(entry.scores?.wakeup)}; font-weight: bold;">${entry.scores?.wakeup}</td>
+                    <td>${entry.chantingTime}</td>
+                    <td style="background: ${getScoreBackground(entry.scores?.chanting)}; font-weight: bold;">${entry.scores?.chanting}</td>
+                    <td>${entry.morningProgramTime || 'NR'}</td>
+                    <td style="background: ${getScoreBackground(entry.scores?.morningProgram)}; font-weight: bold;">${entry.scores?.morningProgram ?? 0}</td>
+                    <td>${entry.daySleepMinutes !== 'NR' ? entry.daySleepMinutes : 'NR'}</td>
+                    <td style="background: ${getScoreBackground(entry.scores?.daySleep)}; font-weight: bold;">${entry.scores?.daySleep}</td>
+                    <td>${entry.readingMinutes !== 'NR' ? entry.readingMinutes : 'NR'}</td>
+                    <td style="background: ${getScoreBackground(entry.scores?.reading)}; font-weight: bold;">${entry.scores?.reading}</td>
+                    <td>${entry.hearingMinutes !== 'NR' ? entry.hearingMinutes : 'NR'}</td>
+                    <td style="background: ${getScoreBackground(entry.scores?.hearing)}; font-weight: bold;">${entry.scores?.hearing}</td>
+                    <td>${entry.notesMinutes !== 'NR' ? entry.notesMinutes : 'NR'}</td>
+                    <td style="background: ${getScoreBackground(entry.scores?.notes)}; font-weight: bold;">${entry.scores?.notes}</td>
+                    <td style="color: ${percentColor}; font-weight: bold;">${dayPercent}%</td>
                 </tr>
             `;
+        }
         }
         
         // Apply weekly notes compensation
@@ -498,39 +544,66 @@ async function loadReports(userId, containerId) {
                 <div class="week-content">
                     <table class="daily-table">
                         <thead>
-                            <tr>
+                            <tr style="background: var(--secondary); color: white;">
                                 <th>Day</th>
-                                <th>Sleep</th>
-                                <th>Wake</th>
-                                <th>MP</th>
-                                <th>Chant</th>
-                                <th>Read</th>
-                                <th>Hear</th>
-                                <th>Notes</th>
-                                <th>D.Sleep</th>
-                                <th>Total</th>
+                                <th>1.To Bed</th>
+                                <th>Mks</th>
+                                <th>2. Wake Up</th>
+                                <th>Mks</th>
+                                <th>3. Japa</th>
+                                <th>Mks</th>
+                                <th>4. MP</th>
+                                <th>Mks</th>
+                                <th>5. DS</th>
+                                <th>Mks</th>
+                                <th>6. Pathan</th>
+                                <th>Mks</th>
+                                <th>7. Sarwan</th>
+                                <th>Mks</th>
+                                <th>8. Ntes Rev.</th>
+                                <th>Mks</th>
+                                <th>Day Wise</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${tableRows}
+                            <tr style="background: #f0f4ff; font-weight: bold;">
+                                <td>Total/1225</td>
+                                <td>—</td>
+                                <td style="background: lightgreen;">${weekTotals.sleepMarks}</td>
+                                <td>—</td>
+                                <td style="background: lightgreen;">${weekTotals.wakeupMarks}</td>
+                                <td>—</td>
+                                <td style="background: lightgreen;">${weekTotals.chantingMarks}</td>
+                                <td>—</td>
+                                <td style="background: lightgreen;">${weekTotals.morningMarks}</td>
+                                <td>—</td>
+                                <td style="background: lightgreen;">${weekTotals.daySleepMarks}</td>
+                                <td>${weekTotals.readingMins}</td>
+                                <td style="background: lightgreen;">${weekTotals.readingMarks}</td>
+                                <td>${weekTotals.hearingMins}</td>
+                                <td style="background: lightgreen;">${weekTotals.hearingMarks}</td>
+                                <td>${weekTotals.notesMins}</td>
+                                <td style="background: lightgreen;">${adjustedNotesMarks}</td>
+                                <td>—</td>
+                            </tr>
+                            <tr style="background: #e8f5e9; font-weight: bold;">
+                                <td>Sadhna %</td>
+                                <td colspan="2" style="background: lightgreen; font-size: 1.1em;">${Math.round((weekTotals.sleepMarks/175)*100)}%</td>
+                                <td colspan="2" style="background: lightgreen; font-size: 1.1em;">${Math.round((weekTotals.wakeupMarks/175)*100)}%</td>
+                                <td colspan="2" style="background: lightgreen; font-size: 1.1em;">${Math.round((weekTotals.chantingMarks/175)*100)}%</td>
+                                <td colspan="2" style="background: lightgreen; font-size: 1.1em;">${Math.round((weekTotals.morningMarks/175)*100)}%</td>
+                                <td colspan="2" style="background: lightgreen; font-size: 1.1em;">${Math.round((weekTotals.daySleepMarks/70)*100)}%</td>
+                                <td colspan="2" style="background: lightgreen; font-size: 1.1em;">${Math.round((weekTotals.readingMarks/175)*100)}%</td>
+                                <td colspan="2" style="background: lightgreen; font-size: 1.1em;">${Math.round((weekTotals.hearingMarks/175)*100)}%</td>
+                                <td colspan="2" style="background: lightgreen; font-size: 1.1em;">${Math.round((adjustedNotesMarks/175)*100)}%</td>
+                                <td>—</td>
+                            </tr>
                         </tbody>
                     </table>
                     
-                    <div style="margin-top: 15px; padding: 15px; background: #f0f4ff; border-radius: 8px; border-left: 4px solid var(--secondary);">
-                        <strong style="color: var(--primary);">📊 Weekly Summary:</strong><br>
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 10px;">
-                            <div>Sleep: <strong>${weekTotals.sleepMarks}</strong></div>
-                            <div>Wakeup: <strong>${weekTotals.wakeupMarks}</strong></div>
-                            <div>Morning: <strong>${weekTotals.morningMarks}</strong></div>
-                            <div>Chanting: <strong>${weekTotals.chantingMarks}</strong></div>
-                            <div>Reading: <strong>${weekTotals.readingMins}m (${weekTotals.readingMarks})</strong></div>
-                            <div>Hearing: <strong>${weekTotals.hearingMins}m (${weekTotals.hearingMarks})</strong></div>
-                            <div>Notes: <strong>${weekTotals.notesMins}m → ${adjustedNotesMarks} ${weekTotals.notesMins >= 245 ? '✓' : ''}</strong></div>
-                            <div>Day Sleep: <strong>${weekTotals.daySleepMarks}</strong></div>
-                        </div>
-                        <div style="margin-top: 10px; padding-top: 10px; border-top: 2px solid var(--secondary);">
-                            <strong style="color: var(--primary); font-size: 1.1em;">Total: ${adjustedTotal}/1225 (${weekPercent}%)</strong>
-                        </div>
+                    <div style="margin-top: 15px; padding: 15px; background: var(--secondary); color: white; border-radius: 8px; text-align: center;">
+                        <strong style="font-size: 1.3em;">OVERALL: ${adjustedTotal}/1225 (${weekPercent}%)</strong>
                     </div>
                 </div>
             </div>
