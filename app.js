@@ -550,7 +550,7 @@ async function loadReports(userId, containerId) {
                 <div class="week-content">
                     <table class="daily-table">
                         <thead>
-                            <tr style="background: var(--secondary); color: white;">
+                            <tr style="background: var(--secondary); color: black;">
                                 <th>Day</th>
                                 <th>1.To Bed</th>
                                 <th>Mks</th>
