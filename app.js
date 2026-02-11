@@ -7,10 +7,19 @@ const firebaseConfig = {
     messagingSenderId: "811405448950",
     appId: "1:811405448950:web:8b711f3129e4bdf06dbed7"
 };
-if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth(), db = firebase.firestore();
+
+// Initialize Firebase
+if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+    console.log('Firebase initialized successfully');
+}
+
+const auth = firebase.auth();
+const db = firebase.firestore();
 let currentUser = null, userProfile = null, activeListener = null;
 let scoreChart = null, activityChart = null;
+
+console.log('Firebase Auth and Firestore ready');
 
 // --- 2. HELPERS ---
 const t2m = (t, isSleep = false) => {
@@ -206,8 +215,6 @@ window.downloadUserExcel = async (userId, userName) => {
                 'OVERALL',
                 weekPercent + '%',
                 '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
-            ]);
-                '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
             ]);
 
             // Blank rows between weeks
@@ -522,7 +529,6 @@ async function loadReports(userId, containerId) {
                     <td style="color: ${percentColor}; font-weight: bold;">${dayPercent}%</td>
                 </tr>
             `;
-        }
         }
         
         // Apply weekly notes compensation
@@ -999,29 +1005,73 @@ if (profileForm) {
 
 const loginForm = document.getElementById('login-form');
 if (loginForm) {
+    console.log('Login form found and attaching handler');
     loginForm.onsubmit = async (e) => { 
         e.preventDefault();
+        console.log('Login form submitted');
+        
+        const email = document.getElementById('login-email').value;
+        const password = document.getElementById('login-password').value;
         const rememberMe = document.getElementById('remember-me').checked;
+        
+        console.log('Login attempt with email:', email);
+        
+        if (!email || !password) {
+            alert('Please enter both email and password');
+            return;
+        }
         
         try {
             // Set persistence before login
             if (rememberMe) {
                 await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+                console.log('Persistence set to LOCAL');
             } else {
                 await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
+                console.log('Persistence set to SESSION');
             }
             
-            await auth.signInWithEmailAndPassword(
-                document.getElementById('login-email').value, 
-                document.getElementById('login-password').value
-            );
+            console.log('Attempting sign in...');
+            await auth.signInWithEmailAndPassword(email, password);
+            console.log('Sign in successful!');
         } catch (err) {
-            alert(err.message);
+            console.error('Login error:', err);
+            let errorMsg = 'Login failed: ';
+            
+            switch(err.code) {
+                case 'auth/invalid-email':
+                    errorMsg += 'Invalid email address';
+                    break;
+                case 'auth/user-disabled':
+                    errorMsg += 'This account has been disabled';
+                    break;
+                case 'auth/user-not-found':
+                    errorMsg += 'No account found with this email';
+                    break;
+                case 'auth/wrong-password':
+                    errorMsg += 'Incorrect password';
+                    break;
+                case 'auth/invalid-credential':
+                    errorMsg += 'Invalid email or password';
+                    break;
+                default:
+                    errorMsg += err.message;
+            }
+            
+            alert(errorMsg);
         }
     };
+} else {
+    console.error('Login form NOT found!');
 }
 
-document.getElementById('logout-btn').onclick = () => auth.signOut();
+// Logout button - attach after element exists
+setTimeout(() => {
+    const logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn) {
+        logoutBtn.onclick = () => auth.signOut();
+    }
+}, 100);
 
 window.openProfileEdit = () => { 
     document.getElementById('profile-name').value = userProfile.name; 
