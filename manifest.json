@@ -1,6 +1,6 @@
 {
-  "name": "RAPD Sadhana Tracker",
-  "short_name": "Sadhana",
+  "name": "RAPD Sadhna Tracker",
+  "short_name": "Sadhna",
   "description": "Daily spiritual practice tracker for RAPD devotees",
   "start_url": "./",
   "display": "standalone",
@@ -27,7 +27,7 @@
     {
       "name": "Daily Entry",
       "short_name": "Entry",
-      "description": "Submit today's sadhana",
+      "description": "Submit today's sadhna",
       "url": "./?tab=sadhana",
       "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
     },

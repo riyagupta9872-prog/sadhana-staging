@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAPD Sadhana Tracker</title>
+    <title>RAPD Sadhna Tracker</title>
 
     <!-- PWA -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2c3e50">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <meta name="apple-mobile-web-app-title" content="Sadhana">
+    <meta name="apple-mobile-web-app-title" content="Sadhna">
     <link rel="apple-touch-icon" href="icon-192.png">
 
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -66,7 +66,7 @@
     <div id="pwa-install-banner">
         <span style="font-size:22px;">📿</span>
         <div style="flex:1;">
-            <div style="font-weight:700;font-size:13px;">Install Sadhana Tracker</div>
+            <div style="font-weight:700;font-size:13px;">Install Sadhna Tracker</div>
             <div style="font-size:11px;opacity:0.8;">Add to home screen for quick access</div>
         </div>
         <button onclick="installPWA()" style="width:auto;padding:6px 14px;font-size:12px;margin:0;background:#3498db;border-radius:8px;">Install</button>
@@ -77,7 +77,7 @@
         <section id="auth-section" class="card">
             <div style="text-align:center;margin-bottom:16px;">
                 <div style="font-size:40px;">📿</div>
-                <h2 style="margin:4px 0;">RAPD Sadhana Tracker</h2>
+                <h2 style="margin:4px 0;">RAPD Sadhna Tracker</h2>
             </div>
             <form id="login-form">
                 <input type="email" id="login-email" placeholder="Email" required autocomplete="email">
@@ -98,7 +98,11 @@
         </section>
 
         <section id="profile-section" class="card hidden">
-            <h2 id="profile-title">Set Your Name</h2>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                <h2 id="profile-title" style="margin:0;">Set Your Name</h2>
+                <button type="button" onclick="showSection('dashboard')" id="cancel-edit" class="hidden"
+                    style="width:auto;padding:6px 16px;background:#95a5a6;font-size:13px;margin:0;border-radius:8px;">✕ Cancel</button>
+            </div>
             <div id="profile-pic-section" style="text-align:center;margin-bottom:20px;">
                 <div style="position:relative;display:inline-block;">
                     <img id="profile-pic-preview" src=""
@@ -114,9 +118,8 @@
                 <label><strong>Full Name:</strong></label>
                 <input type="text" id="profile-name" placeholder="Full Name" required>
                 <button type="submit">💾 Save Name</button>
-                <button type="button" onclick="showSection('dashboard')" id="cancel-edit" class="hidden" style="background:#95a5a6;margin-top:4px;">Cancel</button>
             </form>
-            <div id="change-password-section" class="hidden" style="margin-top:20px;padding-top:20px;border-top:1px solid #eee;">
+            <div id="change-password-section" class="hidden" style="margin-top:24px;padding-top:20px;border-top:1px solid #eee;">
                 <h3 style="margin-bottom:12px;color:var(--primary);font-size:1em;">🔒 Change Password</h3>
                 <form id="change-password-form">
                     <label><strong>Current Password:</strong></label>
@@ -139,22 +142,38 @@
             </div>
         </section>
 
-        <section id="dashboard-section" class="hidden">
-            <div class="header">
-                <div>
-                    <strong id="user-display-name"></strong>
-                    <br><button onclick="openProfileEdit()" style="width:auto; padding:2px 10px; font-size:11px; margin-top:5px; background: #95a5a6;">✏️ Edit</button>
+        <section id="dashboard-section" class="hidden" style="padding-bottom:70px;">
+            <!-- Header with profile pic -->
+            <div class="header" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;">
+                <div style="display:flex;align-items:center;gap:10px;" onclick="openProfileEdit()" role="button" style="cursor:pointer;">
+                    <img id="dashboard-avatar" src="" style="width:38px;height:38px;border-radius:50%;object-fit:cover;border:2px solid #3498db;display:none;background:#eee;">
+                    <div id="dashboard-avatar-placeholder" style="width:38px;height:38px;border-radius:50%;background:#e0e7ef;display:flex;align-items:center;justify-content:center;font-size:18px;border:2px solid #3498db;">👤</div>
+                    <div>
+                        <strong id="user-display-name" style="font-size:14px;"></strong>
+                    </div>
                 </div>
-                <button id="logout-btn" style="width:auto; padding:8px 20px; background:var(--danger)">Logout</button>
+                <button id="logout-btn" style="width:auto;padding:6px 16px;background:var(--danger);font-size:13px;margin:0;border-radius:8px;">Logout</button>
             </div>
 
-            <div class="nav-tabs">
-                <button class="tab-btn active" onclick="switchTab('sadhana')">Daily Entry</button>
-                <button class="tab-btn" onclick="switchTab('tapah')">🔥 Tapah</button>
-                <button class="tab-btn" onclick="switchTab('reports')">My Reports</button>
-                <button class="tab-btn" onclick="switchTab('charts')">Progress Charts</button>
+            <!-- ========== HOME TAB ========== -->
+            <div id="home-tab" class="main-tab-content active">
+                <div id="home-content"></div>
             </div>
 
+            <!-- ========== SADHNA TAB ========== -->
+            <div id="sadhna-main-tab" class="main-tab-content" style="display:none;">
+                <!-- Sub-tabs -->
+                <div style="display:flex;gap:0;background:white;border-radius:12px;overflow:hidden;margin-bottom:16px;box-shadow:0 2px 6px rgba(0,0,0,0.06);">
+                    <button onclick="switchSubTab('sadhna','entry')" class="sub-tab-btn sadhna-sub active"
+                        style="flex:1;padding:12px;border:none;background:#2c3e50;color:white;font-weight:600;font-size:13px;cursor:pointer;margin:0;border-radius:0;">📝 Entry</button>
+                    <button onclick="switchSubTab('sadhna','reports')" class="sub-tab-btn sadhna-sub"
+                        style="flex:1;padding:12px;border:none;background:#f0f0f0;color:#666;font-weight:600;font-size:13px;cursor:pointer;margin:0;border-radius:0;">📄 Reports</button>
+                    <button onclick="switchSubTab('sadhna','progress')" class="sub-tab-btn sadhna-sub"
+                        style="flex:1;padding:12px;border:none;background:#f0f0f0;color:#666;font-weight:600;font-size:13px;cursor:pointer;margin:0;border-radius:0;">📈 Progress</button>
+                </div>
+
+                <!-- Sadhna Entry sub-tab -->
+                <div id="sadhna-entry-subtab" class="sadhna-subtab-content">
             <div id="sadhana-tab" class="tab-content active">
                 <div id="edit-mode-banner" style="display:none;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:10px 15px;margin-bottom:12px;align-items:center;justify-content:space-between;gap:10px;">
                     <div style="display:flex;align-items:center;gap:8px;">
@@ -266,7 +285,93 @@
                     </button>
                 </form>
             </div>
+                </div><!-- /sadhna-entry-subtab -->
 
+                <!-- Sadhna Reports sub-tab -->
+                <div id="sadhna-reports-subtab" class="sadhna-subtab-content" style="display:none;">
+                    <div id="sadhana-reports-panel">
+                        <div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;margin-bottom:16px;">
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <span style="font-size:20px;">📅</span>
+                                <strong style="color:var(--primary);font-size:15px;">My Sadhna History</strong>
+                            </div>
+                            <button onclick="downloadUserExcel(currentUser.uid, userProfile.name)"
+                                style="width:auto;padding:8px 18px;font-size:13px;background:var(--success);color:white;border:none;border-radius:20px;cursor:pointer;white-space:nowrap;margin:0;font-weight:600;">
+                                ⬇ Excel
+                            </button>
+                        </div>
+                        <div id="weekly-reports-container"></div>
+                        <div class="card" style="margin-top:20px;">
+                            <h4 style="margin:0 0 10px;color:var(--primary);">📊 4-Week Trend Comparison</h4>
+                            <div id="four-week-comparison" style="overflow-x:auto;"></div>
+                        </div>
+                        <div class="card" style="margin-top:20px;cursor:pointer;" onclick="openActivityAnalysis()" id="activity-analysis-card">
+                            <div style="display:flex;justify-content:space-between;align-items:center;">
+                                <div>
+                                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                                        <span style="font-size:20px;">📊</span>
+                                        <strong style="color:var(--primary);font-size:15px;">Activity Analysis</strong>
+                                    </div>
+                                    <div style="font-size:13px;color:#888;">See where you're excelling and where to improve</div>
+                                </div>
+                                <button onclick="openActivityAnalysis();event.stopPropagation();"
+                                    style="width:auto;padding:8px 18px;font-size:13px;background:var(--secondary);color:white;border:none;border-radius:20px;cursor:pointer;white-space:nowrap;margin:0;">
+                                    View →
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div><!-- /sadhna-reports-subtab -->
+
+                <!-- Sadhna Progress sub-tab -->
+                <div id="sadhna-progress-subtab" class="sadhna-subtab-content" style="display:none;">
+                    <div class="card">
+                        <div id="score-ring-container" style="padding:16px;background:#f8f9fa;border-radius:10px;"></div>
+                        <div style="margin-top:20px;">
+                            <h4 style="margin-bottom:10px;color:var(--primary);">📈 My Progress</h4>
+                            <div id="chart-period-tabs" style="display:flex;gap:8px;margin-bottom:14px;">
+                                <button type="button" onclick="setChartPeriod('daily')" class="chart-period-btn active"
+                                    style="padding:7px 18px;border-radius:20px;border:none;font-weight:600;font-size:13px;cursor:pointer;width:auto;margin:0;background:#2c3e50;color:white;">Daily</button>
+                                <button type="button" onclick="setChartPeriod('weekly')" class="chart-period-btn"
+                                    style="padding:7px 18px;border-radius:20px;border:1px solid #ddd;font-weight:600;font-size:13px;cursor:pointer;width:auto;margin:0;background:#f0f0f0;color:#666;">Weekly</button>
+                                <button type="button" onclick="setChartPeriod('monthly')" class="chart-period-btn"
+                                    style="padding:7px 18px;border-radius:20px;border:1px solid #ddd;font-weight:600;font-size:13px;cursor:pointer;width:auto;margin:0;background:#f0f0f0;color:#666;">Monthly</button>
+                            </div>
+                            <canvas id="score-chart"></canvas>
+                            <div id="chart-max-label" style="text-align:center;color:#888;font-size:12px;margin-top:6px;">Daily max: 175 · Weekly max: 1225</div>
+                        </div>
+                        <div id="activity-chart-section" style="margin-top:24px;">
+                            <h4 style="margin-bottom:6px;color:var(--primary);">Activity Breakdown <span style="font-size:12px;font-weight:normal;color:#888;">(total pts this period)</span></h4>
+                            <div id="activity-filters" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+                                <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Sleep" onchange="updateActivityFilter()" style="width:auto;"> Sleep</label>
+                                <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Wake-up" onchange="updateActivityFilter()" style="width:auto;"> Wake-up</label>
+                                <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Morning Prog." onchange="updateActivityFilter()" style="width:auto;"> MP</label>
+                                <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Chanting" onchange="updateActivityFilter()" style="width:auto;"> Chanting</label>
+                                <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Reading" onchange="updateActivityFilter()" style="width:auto;"> Reading</label>
+                                <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Hearing" onchange="updateActivityFilter()" style="width:auto;"> Hearing</label>
+                                <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Notes Rev." onchange="updateActivityFilter()" style="width:auto;"> Notes</label>
+                                <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Day Sleep" onchange="updateActivityFilter()" style="width:auto;"> Day Sleep</label>
+                            </div>
+                            <canvas id="activity-chart"></canvas>
+                        </div>
+                    </div>
+                </div><!-- /sadhna-progress-subtab -->
+            </div><!-- /sadhna-main-tab -->
+
+            <!-- ========== TAPAH TAB ========== -->
+            <div id="tapah-main-tab" class="main-tab-content" style="display:none;">
+                <!-- Sub-tabs -->
+                <div style="display:flex;gap:0;background:white;border-radius:12px;overflow:hidden;margin-bottom:16px;box-shadow:0 2px 6px rgba(0,0,0,0.06);">
+                    <button onclick="switchSubTab('tapah','entry')" class="sub-tab-btn tapah-sub active"
+                        style="flex:1;padding:12px;border:none;background:#764ba2;color:white;font-weight:600;font-size:13px;cursor:pointer;margin:0;border-radius:0;">🔥 Entry</button>
+                    <button onclick="switchSubTab('tapah','reports')" class="sub-tab-btn tapah-sub"
+                        style="flex:1;padding:12px;border:none;background:#f0f0f0;color:#666;font-weight:600;font-size:13px;cursor:pointer;margin:0;border-radius:0;">📄 Reports</button>
+                    <button onclick="switchSubTab('tapah','progress')" class="sub-tab-btn tapah-sub"
+                        style="flex:1;padding:12px;border:none;background:#f0f0f0;color:#666;font-weight:600;font-size:13px;cursor:pointer;margin:0;border-radius:0;">📈 Progress</button>
+                </div>
+
+                <!-- Tapah Entry sub-tab -->
+                <div id="tapah-entry-subtab" class="tapah-subtab-content">
             <div id="tapah-tab" class="tab-content hidden">
                 <div id="tapah-edit-banner" style="display:none;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:10px 15px;margin-bottom:12px;align-items:center;justify-content:space-between;gap:10px;">
                     <div style="display:flex;align-items:center;gap:8px;">
@@ -337,95 +442,56 @@
                     style="background:#764ba2;width:100%;padding:12px;color:white;border:none;border-radius:8px;font-weight:700;font-size:15px;cursor:pointer;display:none;">
                     🔥 Submit Tapah
                 </button>
-            </div>
+            </div><!-- /tapah-tab -->
+                </div><!-- /tapah-entry-subtab -->
 
-            <div id="reports-tab" class="tab-content hidden">
-                <div style="display:flex;gap:10px;margin-bottom:16px;">
-                    <button id="report-sadhana-btn" onclick="switchReport('sadhana')"
-                        style="flex:1;padding:10px;border-radius:20px;background:var(--secondary);color:white;font-weight:600;border:none;">
-                        📿 Sadhana
-                    </button>
-                    <button id="report-tapah-btn" onclick="switchReport('tapah')"
-                        style="flex:1;padding:10px;border-radius:20px;background:#eee;color:#666;font-weight:600;border:none;">
-                        🔥 Tapah
-                    </button>
-                </div>
-                <div id="sadhana-reports-panel">
-                    <div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;margin-bottom:16px;">
-                        <div style="display:flex;align-items:center;gap:8px;">
-                            <span style="font-size:20px;">📅</span>
-                            <strong style="color:var(--primary);font-size:15px;">My Sadhna History</strong>
-                        </div>
-                        <button onclick="downloadUserExcel(currentUser.uid, userProfile.name)"
-                            style="width:auto;padding:8px 18px;font-size:13px;background:var(--success);color:white;border:none;border-radius:20px;cursor:pointer;white-space:nowrap;margin:0;font-weight:600;">
-                            ⬇ Excel
-                        </button>
-                    </div>
-                    <div id="weekly-reports-container"></div>
-                    <div class="card" style="margin-top:20px;">
-                        <h4 style="margin:0 0 10px;color:var(--primary);">📊 4-Week Trend Comparison</h4>
-                        <div id="four-week-comparison" style="overflow-x:auto;"></div>
-                    </div>
-                    <div class="card" style="margin-top:20px;cursor:pointer;" onclick="openActivityAnalysis()" id="activity-analysis-card">
-                        <div style="display:flex;justify-content:space-between;align-items:center;">
-                            <div>
-                                <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-                                    <span style="font-size:20px;">📊</span>
-                                    <strong style="color:var(--primary);font-size:15px;">Activity Analysis</strong>
-                                </div>
-                                <div style="font-size:13px;color:#888;">See which activities you're excelling at and where to improve</div>
-                            </div>
-                            <button onclick="openActivityAnalysis();event.stopPropagation();"
-                                style="width:auto;padding:8px 18px;font-size:13px;background:var(--secondary);color:white;border:none;border-radius:20px;cursor:pointer;white-space:nowrap;margin:0;">
-                                View →
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                <div id="tapah-reports-panel" style="display:none;">
+                <!-- Tapah Reports sub-tab -->
+                <div id="tapah-reports-subtab" class="tapah-subtab-content" style="display:none;">
                     <div id="tapah-report-container"></div>
                 </div>
-            </div>
 
-            <div id="charts-tab" class="tab-content hidden">
-                <div class="card">
-                    <select id="chart-period" onchange="generateCharts()" style="display:none;">
-                        <option value="daily">Last 28 Days</option>
-                        <option value="weekly">Last 4 Weeks</option>
-                        <option value="monthly">Last 6 Months</option>
-                    </select>
-                    <div id="score-ring-container" style="margin-top:20px;padding:16px;background:#f8f9fa;border-radius:10px;"></div>
-                    <div style="margin-top:20px;">
-                        <h4 style="margin-bottom:10px;color:var(--primary);">📈 My Progress</h4>
-                        <div id="chart-period-tabs" style="display:flex;gap:8px;margin-bottom:14px;">
-                            <button type="button" onclick="setChartPeriod('daily')" class="chart-period-btn active"
-                                style="padding:7px 18px;border-radius:20px;border:none;font-weight:600;font-size:13px;cursor:pointer;width:auto;margin:0;background:#2c3e50;color:white;">Daily</button>
-                            <button type="button" onclick="setChartPeriod('weekly')" class="chart-period-btn"
-                                style="padding:7px 18px;border-radius:20px;border:1px solid #ddd;font-weight:600;font-size:13px;cursor:pointer;width:auto;margin:0;background:#f0f0f0;color:#666;">Weekly</button>
-                            <button type="button" onclick="setChartPeriod('monthly')" class="chart-period-btn"
-                                style="padding:7px 18px;border-radius:20px;border:1px solid #ddd;font-weight:600;font-size:13px;cursor:pointer;width:auto;margin:0;background:#f0f0f0;color:#666;">Monthly</button>
-                        </div>
-                        <canvas id="score-chart"></canvas>
-                        <div id="chart-max-label" style="text-align:center;color:#888;font-size:12px;margin-top:6px;">Daily max: 160 · Weekly max: 1120</div>
-                    </div>
-                    <div id="activity-chart-section" style="margin-top:24px;">
-                        <h4 style="margin-bottom:6px;color:var(--primary);">Activity Breakdown <span style="font-size:12px;font-weight:normal;color:#888;">(total pts this period)</span></h4>
-                        <div id="activity-filters" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
-                            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Sleep" onchange="updateActivityFilter()" style="width:auto;"> Sleep</label>
-                            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Wake-up" onchange="updateActivityFilter()" style="width:auto;"> Wake-up</label>
-                            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Morning Prog." onchange="updateActivityFilter()" style="width:auto;"> MP</label>
-                            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Chanting" onchange="updateActivityFilter()" style="width:auto;"> Chanting</label>
-                            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Reading" onchange="updateActivityFilter()" style="width:auto;"> Reading</label>
-                            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Hearing" onchange="updateActivityFilter()" style="width:auto;"> Hearing</label>
-                            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Notes Rev." onchange="updateActivityFilter()" style="width:auto;"> Notes</label>
-                            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Day Sleep" onchange="updateActivityFilter()" style="width:auto;"> Day Sleep</label>
-                        </div>
-                        <canvas id="activity-chart"></canvas>
+                <!-- Tapah Progress sub-tab (placeholder) -->
+                <div id="tapah-progress-subtab" class="tapah-subtab-content" style="display:none;">
+                    <div class="card" style="text-align:center;padding:40px 20px;color:#888;">
+                        <div style="font-size:36px;margin-bottom:10px;">📈</div>
+                        <div style="font-weight:600;">Tapah Progress</div>
+                        <div style="font-size:13px;margin-top:6px;">Coming soon</div>
                     </div>
                 </div>
-            </div>
+            </div><!-- /tapah-main-tab -->
+
+            <!-- Hidden elements for backward compat -->
+            <div id="reports-tab" class="tab-content hidden" style="display:none!important;"></div>
+            <div id="charts-tab" class="tab-content hidden" style="display:none!important;"></div>
+            <select id="chart-period" style="display:none;">
+                <option value="daily">Last 28 Days</option>
+                <option value="weekly">Last 4 Weeks</option>
+                <option value="monthly">Last 6 Months</option>
+            </select>
         </section>
     </div>
+
+    <!-- ========== BOTTOM NAVIGATION BAR ========== -->
+    <nav id="bottom-nav" style="display:none;position:fixed;bottom:0;left:0;right:0;background:white;border-top:1px solid #e8e8e8;box-shadow:0 -2px 10px rgba(0,0,0,0.06);z-index:9998;padding:6px 0 env(safe-area-inset-bottom, 6px);">
+        <div style="display:flex;justify-content:space-around;max-width:500px;margin:0 auto;">
+            <button onclick="switchMainTab('home')" class="bottom-nav-btn active" data-tab="home"
+                style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;padding:6px 4px;cursor:pointer;margin:0;color:#3498db;font-size:10px;font-weight:600;">
+                <span style="font-size:22px;">🏠</span> Home
+            </button>
+            <button onclick="switchMainTab('sadhna')" class="bottom-nav-btn" data-tab="sadhna"
+                style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;padding:6px 4px;cursor:pointer;margin:0;color:#999;font-size:10px;font-weight:600;">
+                <span style="font-size:22px;">🙏</span> Sadhna
+            </button>
+            <button onclick="switchMainTab('tapah')" class="bottom-nav-btn" data-tab="tapah"
+                style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;padding:6px 4px;cursor:pointer;margin:0;color:#999;font-size:10px;font-weight:600;">
+                <span style="font-size:22px;">🔥</span> Tapah
+            </button>
+            <button onclick="openProfileEdit()" class="bottom-nav-btn" data-tab="settings"
+                style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;padding:6px 4px;cursor:pointer;margin:0;color:#999;font-size:10px;font-weight:600;">
+                <span style="font-size:22px;">⚙️</span> Settings
+            </button>
+        </div>
+    </nav>
 
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>

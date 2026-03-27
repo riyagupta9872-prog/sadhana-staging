@@ -1,7 +1,7 @@
 // RAPD Sadhana Tracker — Service Worker
 // Cache-first for static assets, network-first for Firebase
 
-const CACHE_NAME = 'sadhana-tracker-v2';
+const CACHE_NAME = 'sadhana-tracker-v3';
 const STATIC_ASSETS = [
     './manifest.json',
     './icon-192.png',
