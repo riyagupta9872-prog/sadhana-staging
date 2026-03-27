@@ -163,46 +163,108 @@
                     </div>
                     <button onclick="cancelEdit()" style="width:auto;padding:5px 14px;background:#6c757d;font-size:13px;margin:0;border-radius:6px;">✕ Cancel Edit</button>
                 </div>
-                <div class="card">
-                    <form id="sadhana-form">
-                        <label><strong>Date:</strong></label>
-                        <select id="sadhana-date" required></select>
-                        <label><strong>Bed Time (Yesterday):</strong></label>
-                        <input type="time" id="sleep-time" required>
-                        <label><strong>Wake Up Time:</strong></label>
-                        <input type="time" id="wakeup-time" required>
-                        <label><strong>Morning Program:</strong></label>
-                        <div style="display:flex;gap:8px;margin:6px 0 4px;">
-                            <button type="button" id="mp-done-btn" onclick="toggleMorningProgram(false)"
-                                class="mp-toggle mp-active"
-                                style="flex:1;padding:9px;border-radius:6px;border:2px solid #27ae60;background:#27ae60;color:white;font-weight:600;width:auto;margin:0;font-size:14px;">
-                                ✅ Done
-                            </button>
-                            <button type="button" id="mp-no-btn" onclick="toggleMorningProgram(true)"
-                                class="mp-toggle"
-                                style="flex:1;padding:9px;border-radius:6px;border:2px solid #ddd;background:#f8f9fa;color:#666;font-weight:600;width:auto;margin:0;font-size:14px;">
-                                ❌ Not Done (−5)
-                            </button>
+                <form id="sadhana-form">
+                    <!-- Date Card -->
+                    <div class="card" style="padding:18px 20px;margin-bottom:14px;">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                            <span style="font-size:16px;">📅</span>
+                            <span style="font-weight:700;color:#5b6abf;font-size:13px;letter-spacing:0.5px;">Date</span>
                         </div>
-                        <div id="mp-time-row">
-                            <input type="time" id="morning-program-time">
-                            <small style="display:block;color:#666;margin-top:-4px;margin-bottom:8px;">Target: 4:45 AM for 25 marks</small>
+                        <select id="sadhana-date" required style="border:1px solid #e8e8e8;border-radius:10px;padding:14px 16px;font-size:15px;color:#333;background:#fafbfc;"></select>
+                    </div>
+
+                    <!-- Times Card -->
+                    <div class="card" style="padding:18px 20px;margin-bottom:14px;">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+                            <span style="font-size:16px;">⏰</span>
+                            <span style="font-weight:700;color:#e74c3c;font-size:13px;letter-spacing:0.5px;">TIMES</span>
                         </div>
-                        <label><strong>Chanting (Last round by):</strong></label>
-                        <input type="time" id="chanting-time" required>
-                        <small style="display:block;color:#666;margin-top:-5px;margin-bottom:8px;">Target: Before 9:00 AM for 25 marks</small>
-                        <label><strong>Reading (Pathan) - Minutes:</strong></label>
-                        <input type="number" id="reading-mins" placeholder="Enter minutes" required min="0" value="0">
-                        <label><strong>Hearing (Shravan) - Minutes:</strong></label>
-                        <input type="number" id="hearing-mins" placeholder="Enter minutes" required min="0" value="0">
-                        <label><strong>Notes Revision - Minutes:</strong></label>
-                        <input type="number" id="notes-mins" placeholder="Enter minutes" required min="0" value="0">
-                        <small style="display:block;color:#666;margin-top:-5px;margin-bottom:8px;">Target: 35 mins for 25 marks | Weekly: 245 mins for full marks</small>
-                        <label><strong>Day Sleep (Mins):</strong></label>
-                        <input type="number" id="day-sleep-minutes" value="0" required>
-                        <button type="submit" id="sadhana-submit-btn" style="background:var(--success);margin-top:15px;">✅ Submit Sadhana</button>
-                    </form>
-                </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+                            <div>
+                                <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#555;margin-bottom:6px;">
+                                    <span>🛏️</span> <strong>Bed Time</strong>
+                                </label>
+                                <input type="time" id="sleep-time" required style="border:1px solid #e8e8e8;border-radius:10px;padding:12px 14px;font-size:15px;background:#fafbfc;">
+                            </div>
+                            <div>
+                                <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#555;margin-bottom:6px;">
+                                    <span>⏰</span> <strong>Wake Up</strong>
+                                </label>
+                                <input type="time" id="wakeup-time" required style="border:1px solid #e8e8e8;border-radius:10px;padding:12px 14px;font-size:15px;background:#fafbfc;">
+                            </div>
+                        </div>
+                        <!-- Morning Program -->
+                        <div style="margin-bottom:14px;">
+                            <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#555;margin-bottom:6px;">
+                                <span>🙏</span> <strong>Morning Program</strong>
+                            </label>
+                            <div style="display:flex;gap:8px;margin-bottom:6px;">
+                                <button type="button" id="mp-done-btn" onclick="toggleMorningProgram(false)"
+                                    class="mp-toggle mp-active"
+                                    style="flex:1;padding:10px;border-radius:10px;border:2px solid #27ae60;background:#27ae60;color:white;font-weight:600;width:auto;margin:0;font-size:13px;">
+                                    ✅ Done
+                                </button>
+                                <button type="button" id="mp-no-btn" onclick="toggleMorningProgram(true)"
+                                    class="mp-toggle"
+                                    style="flex:1;padding:10px;border-radius:10px;border:2px solid #ddd;background:#f8f9fa;color:#666;font-weight:600;width:auto;margin:0;font-size:13px;">
+                                    ❌ Not Done
+                                </button>
+                            </div>
+                            <div id="mp-time-row">
+                                <input type="time" id="morning-program-time" style="border:1px solid #e8e8e8;border-radius:10px;padding:12px 14px;font-size:15px;background:#fafbfc;">
+                            </div>
+                        </div>
+                        <!-- Chanting -->
+                        <div>
+                            <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#555;margin-bottom:6px;">
+                                <span>📿</span> <strong>Chanting Completed By</strong>
+                            </label>
+                            <input type="time" id="chanting-time" required style="border:1px solid #e8e8e8;border-radius:10px;padding:12px 14px;font-size:15px;background:#fafbfc;">
+                        </div>
+                    </div>
+
+                    <!-- Activities Card -->
+                    <div class="card" style="padding:18px 20px;margin-bottom:14px;">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+                            <span style="font-size:16px;">📊</span>
+                            <span style="font-weight:700;color:#5b6abf;font-size:13px;letter-spacing:0.5px;">ACTIVITIES (MINUTES)</span>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+                            <div>
+                                <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#555;margin-bottom:6px;">
+                                    <span>📖</span> <strong>Reading</strong>
+                                </label>
+                                <input type="number" id="reading-mins" placeholder="0" required min="0" value="0" style="border:1px solid #e8e8e8;border-radius:10px;padding:12px 14px;font-size:15px;background:#fafbfc;">
+                            </div>
+                            <div>
+                                <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#555;margin-bottom:6px;">
+                                    <span>🎧</span> <strong>Hearing</strong>
+                                </label>
+                                <input type="number" id="hearing-mins" placeholder="0" required min="0" value="0" style="border:1px solid #e8e8e8;border-radius:10px;padding:12px 14px;font-size:15px;background:#fafbfc;">
+                            </div>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                            <div>
+                                <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#555;margin-bottom:6px;">
+                                    <span>📝</span> <strong>Notes Revision</strong>
+                                </label>
+                                <input type="number" id="notes-mins" placeholder="0" required min="0" value="0" style="border:1px solid #e8e8e8;border-radius:10px;padding:12px 14px;font-size:15px;background:#fafbfc;">
+                            </div>
+                            <div>
+                                <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#555;margin-bottom:6px;">
+                                    <span>😴</span> <strong>Day Sleep</strong>
+                                </label>
+                                <input type="number" id="day-sleep-minutes" value="0" required style="border:1px solid #e8e8e8;border-radius:10px;padding:12px 14px;font-size:15px;background:#fafbfc;">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <button type="submit" id="sadhana-submit-btn"
+                        style="background:var(--success);margin-top:4px;padding:16px;border-radius:12px;font-size:16px;font-weight:700;">
+                        ✅ Submit Sadhna
+                    </button>
+                </form>
             </div>
 
             <div id="tapah-tab" class="tab-content hidden">
@@ -289,7 +351,16 @@
                     </button>
                 </div>
                 <div id="sadhana-reports-panel">
-                    <button onclick="downloadUserExcel(currentUser.uid, userProfile.name)" style="background:var(--success); margin-bottom:15px">📥 Download My History (Excel)</button>
+                    <div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;margin-bottom:16px;">
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <span style="font-size:20px;">📅</span>
+                            <strong style="color:var(--primary);font-size:15px;">My Sadhna History</strong>
+                        </div>
+                        <button onclick="downloadUserExcel(currentUser.uid, userProfile.name)"
+                            style="width:auto;padding:8px 18px;font-size:13px;background:var(--success);color:white;border:none;border-radius:20px;cursor:pointer;white-space:nowrap;margin:0;font-weight:600;">
+                            ⬇ Excel
+                        </button>
+                    </div>
                     <div id="weekly-reports-container"></div>
                     <div class="card" style="margin-top:20px;">
                         <h4 style="margin:0 0 10px;color:var(--primary);">📊 4-Week Trend Comparison</h4>
@@ -318,16 +389,24 @@
 
             <div id="charts-tab" class="tab-content hidden">
                 <div class="card">
-                    <label><strong>View Period:</strong></label>
-                    <select id="chart-period" onchange="generateCharts()" style="max-width:300px;">
+                    <select id="chart-period" onchange="generateCharts()" style="display:none;">
                         <option value="daily">Last 28 Days</option>
                         <option value="weekly">Last 4 Weeks</option>
                         <option value="monthly">Last 6 Months</option>
                     </select>
                     <div id="score-ring-container" style="margin-top:20px;padding:16px;background:#f8f9fa;border-radius:10px;"></div>
                     <div style="margin-top:20px;">
-                        <h4 style="margin-bottom:10px;color:var(--primary);">Daily Performance</h4>
+                        <h4 style="margin-bottom:10px;color:var(--primary);">📈 My Progress</h4>
+                        <div id="chart-period-tabs" style="display:flex;gap:8px;margin-bottom:14px;">
+                            <button type="button" onclick="setChartPeriod('daily')" class="chart-period-btn active"
+                                style="padding:7px 18px;border-radius:20px;border:none;font-weight:600;font-size:13px;cursor:pointer;width:auto;margin:0;background:#2c3e50;color:white;">Daily</button>
+                            <button type="button" onclick="setChartPeriod('weekly')" class="chart-period-btn"
+                                style="padding:7px 18px;border-radius:20px;border:1px solid #ddd;font-weight:600;font-size:13px;cursor:pointer;width:auto;margin:0;background:#f0f0f0;color:#666;">Weekly</button>
+                            <button type="button" onclick="setChartPeriod('monthly')" class="chart-period-btn"
+                                style="padding:7px 18px;border-radius:20px;border:1px solid #ddd;font-weight:600;font-size:13px;cursor:pointer;width:auto;margin:0;background:#f0f0f0;color:#666;">Monthly</button>
+                        </div>
                         <canvas id="score-chart"></canvas>
+                        <div id="chart-max-label" style="text-align:center;color:#888;font-size:12px;margin-top:6px;">Daily max: 160 · Weekly max: 1120</div>
                     </div>
                     <div id="activity-chart-section" style="margin-top:24px;">
                         <h4 style="margin-bottom:6px;color:var(--primary);">Activity Breakdown <span style="font-size:12px;font-weight:normal;color:#888;">(total pts this period)</span></h4>

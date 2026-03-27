@@ -1,11 +1,8 @@
 // RAPD Sadhana Tracker — Service Worker
 // Cache-first for static assets, network-first for Firebase
 
-const CACHE_NAME = 'sadhana-tracker-v1';
+const CACHE_NAME = 'sadhana-tracker-v2';
 const STATIC_ASSETS = [
-    './',
-    './index.html',
-    './app.js',
     './manifest.json',
     './icon-192.png',
     './icon-512.png',
@@ -56,19 +53,43 @@ self.addEventListener('fetch', (event) => {
         return; // Let browser handle — no caching for live data
     }
 
-    // Cache-first for everything else (app shell)
+    // Network-first for app's own HTML/JS/CSS (so updates always come through)
+    const isAppFile = url.origin === self.location.origin && (
+        url.pathname.endsWith('.html') ||
+        url.pathname.endsWith('.js') ||
+        url.pathname.endsWith('.css') ||
+        url.pathname.endsWith('/')
+    );
+
+    if (isAppFile) {
+        event.respondWith(
+            fetch(event.request).then((response) => {
+                if (response && response.status === 200) {
+                    const clone = response.clone();
+                    caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+                }
+                return response;
+            }).catch(() => {
+                return caches.match(event.request).then(cached => {
+                    if (cached) return cached;
+                    if (event.request.mode === 'navigate') return caches.match('./index.html');
+                });
+            })
+        );
+        return;
+    }
+
+    // Cache-first for everything else (icons, CDN libs, images)
     event.respondWith(
         caches.match(event.request).then((cached) => {
             if (cached) return cached;
             return fetch(event.request).then((response) => {
-                // Cache successful GET responses
                 if (response && response.status === 200 && event.request.method === 'GET') {
                     const clone = response.clone();
                     caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
                 }
                 return response;
             }).catch(() => {
-                // Offline fallback for navigation requests
                 if (event.request.mode === 'navigate') {
                     return caches.match('./index.html');
                 }

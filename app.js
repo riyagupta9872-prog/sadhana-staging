@@ -858,8 +858,8 @@ async function loadReports(userId, containerId) {
         html += `
             <div class="week-card ${weekClass}">
                 <div class="week-header" onclick="this.nextElementSibling.classList.toggle('expanded'); this.querySelector('.toggle-icon').textContent = this.nextElementSibling.classList.contains('expanded') ? '▼' : '▶';">
-                    <span>📅 ${week.label.split('_')[0]}</span>
-                    <span style="color:${fairPercent>=50?'#27ae60':'#e74c3c'};">${adjustedTotal}/${fairMax} (${fairPercent}%) <span class="toggle-icon">▶</span></span>
+                    <span>📅 ${week.label.split('_')[0]} ${week.label.split('_')[1] || ''}</span>
+                    <span style="color:${fairPercent>=50?'#27ae60':'#e74c3c'};font-weight:700;">${adjustedTotal} / ${fairMax} (${fairPercent}%) <span class="toggle-icon">▶</span></span>
                 </div>
                 <div class="week-content">
                     <div style="overflow-x:auto;">
@@ -926,8 +926,8 @@ async function loadReports(userId, containerId) {
                     </table>
                     </div>
                     <div style="margin-top:12px;padding:12px 16px;background:${fairPercent>=50?'#27ae60':'#e74c3c'};color:white;border-radius:8px;text-align:center;">
-                        <strong style="font-size:1.2em;">OVERALL: ${adjustedTotal}/${fairMax} (${fairPercent}%)</strong>
-                        <div style="font-size:11px;opacity:0.85;margin-top:3px;">Based on ${elapsedDays} elapsed days × 175 pts each</div>
+                        <strong style="font-size:1.2em;">${adjustedTotal} / ${fairMax} (${fairPercent}%)</strong>
+                        <div style="font-size:11px;opacity:0.85;margin-top:3px;">${elapsedDays} days × 175 pts</div>
                     </div>
                 </div>
             </div>
@@ -1331,12 +1331,6 @@ function renderScoreLineChart(labels, scores) {
     const yMin = hasData ? Math.min(-40, Math.min(...realScores) - 10) : -40;
     const yMax = hasData ? Math.max(175, Math.max(...realScores) + 10) : 175;
 
-    const pointColors = scores.map(s => {
-        if (s === null) return 'rgba(200,200,200,0.5)';
-        const pct = s / 175 * 100;
-        return pct >= 70 ? '#27ae60' : pct >= 50 ? '#f39c12' : '#e74c3c';
-    });
-
     scoreChart = new Chart(scoreCtx, {
         type: 'line',
         data: {
@@ -1344,12 +1338,15 @@ function renderScoreLineChart(labels, scores) {
             datasets: [{
                 label: 'Score',
                 data: scores,
-                borderColor: '#3498db',
-                backgroundColor: 'rgba(52,152,219,0.08)',
+                borderColor: '#5b9bd5',
+                backgroundColor: 'rgba(91,155,213,0.10)',
                 borderWidth: 2.5,
-                pointBackgroundColor: pointColors,
-                pointRadius: 5,
-                pointHoverRadius: 7,
+                pointBackgroundColor: '#ffffff',
+                pointBorderColor: '#5b9bd5',
+                pointBorderWidth: 2,
+                pointRadius: 4,
+                pointHoverRadius: 6,
+                pointHoverBackgroundColor: '#5b9bd5',
                 tension: 0.35,
                 fill: true,
                 spanGaps: false,
@@ -1394,6 +1391,34 @@ function renderScoreLineChart(labels, scores) {
         }, 100);
     }
 }
+
+// Chart period tab switcher (Daily / Weekly / Monthly buttons)
+window.setChartPeriod = (period) => {
+    const select = document.getElementById('chart-period');
+    if (select) select.value = period;
+    // Update tab button styles
+    document.querySelectorAll('.chart-period-btn').forEach(btn => {
+        btn.style.background = '#f0f0f0';
+        btn.style.color = '#666';
+        btn.style.border = '1px solid #ddd';
+        btn.classList.remove('active');
+    });
+    const activeBtn = document.querySelector(`.chart-period-btn[onclick*="'${period}'"]`);
+    if (activeBtn) {
+        activeBtn.style.background = '#2c3e50';
+        activeBtn.style.color = 'white';
+        activeBtn.style.border = 'none';
+        activeBtn.classList.add('active');
+    }
+    // Update max label
+    const maxLabel = document.getElementById('chart-max-label');
+    if (maxLabel) {
+        if (period === 'daily') maxLabel.textContent = 'Daily max: 160 · Weekly max: 1120';
+        else if (period === 'weekly') maxLabel.textContent = 'Weekly max: 1120';
+        else maxLabel.textContent = '';
+    }
+    generateCharts();
+};
 
 // Activity filter update (called by checkboxes)
 window.updateActivityFilter = () => {
