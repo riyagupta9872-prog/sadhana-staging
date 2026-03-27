@@ -1,11 +1,11 @@
 // --- 1. FIREBASE SETUP ---
 const firebaseConfig = {
-    apiKey: "AIzaSyCZdmZJckSWJo1tFT14NVKVurUGsoKrRy8",
-    authDomain: "rapd--sadhana-tracker.firebaseapp.com",
-    projectId: "rapd--sadhana-tracker",
-    storageBucket: "rapd--sadhana-tracker.firebasestorage.app",
-    messagingSenderId: "811405448950",
-    appId: "1:811405448950:web:8b711f3129e4bdf06dbed7"
+    apiKey: "AIzaSyDMXB0mD3fZPpCQti9Ikt-MdBjzmfBNfJs",
+    authDomain: "nimai-nitai.firebaseapp.com",
+    projectId: "nimai-nitai",
+    storageBucket: "nimai-nitai.firebasestorage.app",
+    messagingSenderId: "221744100000",
+    appId: "1:221744100000:web:24830d9a7d9a5cb4d3cfc5"
 };
 
 if (!firebase.apps.length) {
@@ -20,6 +20,18 @@ let scoreChart = null, activityChart = null;
 let editingDate = null;
 
 // --- 2. HELPERS ---
+// Local date helpers — avoids toISOString() UTC bug
+// (IST users between midnight–5:30 AM would get yesterday's date with toISOString)
+function toLocalDateStr(date) {
+    const d = date || new Date();
+    return d.getFullYear() + '-' +
+        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+        String(d.getDate()).padStart(2, '0');
+}
+function parseLocalDate(dateStr) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return new Date(y, m - 1, d);
+}
 const t2m = (t, isSleep = false) => {
     if (!t || t === "NR") return 9999;
     let [h, m] = t.split(':').map(Number);
@@ -28,15 +40,12 @@ const t2m = (t, isSleep = false) => {
 };
 
 function getWeekInfo(dateStr) {
-    const d = new Date(dateStr);
+    const MONTHS_WK = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const d = new Date(dateStr + 'T00:00:00');
     const sun = new Date(d); sun.setDate(d.getDate() - d.getDay());
     const sat = new Date(sun); sat.setDate(sun.getDate() + 6);
-    const fmt = (date) => {
-        const day = String(date.getDate()).padStart(2, '0');
-        const month = date.toLocaleString('en-GB', { month: 'short' });
-        return `${day} ${month}`;
-    };
-    return { sunStr: sun.toISOString().split('T')[0], label: `${fmt(sun)} to ${fmt(sat)}_${sun.getFullYear()}` };
+    const fmt = (date) => `${String(date.getDate()).padStart(2,'0')} ${MONTHS_WK[date.getMonth()]}`;
+    return { sunStr: toLocalDateStr(sun), label: `${fmt(sun)} to ${fmt(sat)}_${sun.getFullYear()}` };
 }
 
 function getNRData(date) {
@@ -80,13 +89,13 @@ window.downloadUserExcel = async (userId, userName) => {
             dataArray.push(['Day', '1.To Bed', 'Mks', '2. Wake Up', 'Mks', '3. Japa', 'Mks', '4. MP', 'Mks', '5. DS', 'Mks', '6. Pathan', 'Mks', '7. Sarwan', 'Mks', '8. Ntes Rev.', 'Mks', 'Day Wise']);
 
             let weekTotals = { sleepM: 0, wakeupM: 0, morningProgramM: 0, chantingM: 0, readingM: 0, hearingM: 0, notesM: 0, daySleepM: 0, readingMins: 0, hearingMins: 0, notesMins: 0, daySleepMins: 0, total: 0 };
-            const weekStart = new Date(week.sunStr);
+            const weekStart = new Date(week.sunStr + 'T00:00:00');
             const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
             for (let i = 0; i < 7; i++) {
                 const currentDate = new Date(weekStart);
                 currentDate.setDate(currentDate.getDate() + i);
-                const dateStr = currentDate.toISOString().split('T')[0];
+                const dateStr = toLocalDateStr(currentDate);
                 const dayLabel = `${dayNames[i]} ${String(currentDate.getDate()).padStart(2, '0')}`;
                 const entry = week.days[dateStr] || getNRData(dateStr);
 
@@ -164,6 +173,7 @@ window.switchTab = (t) => {
     if (btn) btn.classList.add('active');
 
     if (t === 'reports' && currentUser) {
+        _reportsLoading = false; // allow fresh load on manual tab switch
         loadReports(currentUser.uid, 'weekly-reports-container');
         // Reload tapah report too if it's the active panel
         const tapPanel = document.getElementById('tapah-reports-panel');
@@ -177,7 +187,6 @@ window.switchTab = (t) => {
 
 // --- 5. AUTH STATE ---
 auth.onAuthStateChanged(async (user) => {
-    console.log('Auth state changed:', user ? 'LOGGED IN uid=' + user.uid : 'LOGGED OUT');
     if (user) {
         currentUser = user;
         const userDoc = await db.collection('users').doc(user.uid).get();
@@ -191,7 +200,10 @@ auth.onAuthStateChanged(async (user) => {
             userProfile = userDoc.data();
             showSection('dashboard');
             document.getElementById('user-display-name').textContent = userProfile.name;
+            loadProfilePic();
             setupDateSelect();
+            _reportsLoading = false; // always reset on fresh login (auth fires twice on mobile)
+            _tapahAnswering = false; // reset tapah debounce on login
             loadReports(currentUser.uid, 'weekly-reports-container');
         }
     } else {
@@ -276,6 +288,7 @@ window.toggleMorningProgram = (notDone) => {
     const timeRow = document.getElementById('mp-time-row');
     const mpDoneBtn = document.getElementById('mp-done-btn');
     const mpNoBtn = document.getElementById('mp-no-btn');
+    if (!timeRow || !mpDoneBtn || !mpNoBtn) return; // guard: elements not in DOM yet
     if (notDone) {
         timeRow.style.display = 'none';
         mpDoneBtn.classList.remove('mp-active');
@@ -288,7 +301,68 @@ window.toggleMorningProgram = (notDone) => {
 };
 
 function isMorningProgramNotDone() {
-    return document.getElementById('mp-no-btn').classList.contains('mp-active');
+    const btn = document.getElementById('mp-no-btn');
+    return btn ? btn.classList.contains('mp-active') : false;
+}
+
+// --- BED TIME WARNING MODAL ---
+// Returns a Promise<boolean> — resolves true if user confirms, false if they go back to fix
+function showBedTimeWarning(slp, warningMsg) {
+    return new Promise((resolve) => {
+        const existing = document.getElementById('bedtime-warn-modal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'bedtime-warn-modal';
+        modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+        modal.innerHTML = `
+            <div style="background:white;border-radius:14px;max-width:380px;width:100%;padding:28px;box-shadow:0 10px 40px rgba(0,0,0,0.3);text-align:center;">
+                <div style="font-size:40px;margin-bottom:10px;">⚠️</div>
+                <h3 style="margin:0 0 10px;color:#e67e22;font-size:17px;">Check Bed Time</h3>
+                <p style="font-size:14px;color:#555;margin:0 0 8px;">You entered: <strong style="color:#e74c3c;font-size:16px;">${slp}</strong></p>
+                <p style="font-size:13px;color:#777;margin:0 0 20px;line-height:1.5;">${warningMsg}</p>
+                <div style="display:flex;gap:10px;justify-content:center;">
+                    <button id="bedwarn-fix" style="flex:1;padding:11px;background:#f8f9fa;color:#2c3e50;border:2px solid #ddd;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">
+                        ✏️ Fix It
+                    </button>
+                    <button id="bedwarn-confirm" style="flex:1;padding:11px;background:#e67e22;color:white;border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">
+                        Yes, Submit
+                    </button>
+                </div>
+                <p style="font-size:11px;color:#aaa;margin:12px 0 0;">Score will be <strong style="color:#e74c3c;">−5</strong> for bed time regardless.</p>
+            </div>`;
+        document.body.appendChild(modal);
+
+        document.getElementById('bedwarn-fix').onclick = () => { modal.remove(); resolve(false); };
+        document.getElementById('bedwarn-confirm').onclick = () => { modal.remove(); resolve(true); };
+        modal.addEventListener('click', (e) => { if (e.target === modal) { modal.remove(); resolve(false); } });
+    });
+}
+
+// Validate bed time — returns a warning message string if suspicious, null if fine
+function getBedTimeWarning(slp) {
+    if (!slp) return null;
+    const [h, m] = slp.split(':').map(Number);
+
+    // AM hours 4:00–11:59 entered as bed time are almost certainly a mistake
+    // (user typed 10:30 meaning 10:30 PM but entered AM)
+    if (h >= 4 && h <= 11) {
+        const ampm = `${h}:${String(m).padStart(2,'0')} AM`;
+        const pm = `${h + 12}:${String(m).padStart(2,'0')} (${h}:${String(m).padStart(2,'0')} PM)`;
+        return `Did you mean <strong>${pm}</strong>?<br>A bed time of <strong>${ampm}</strong> seems unusual. Please confirm or go back to fix it.`;
+    }
+
+    // 12:xx PM range (noon) also suspicious
+    if (h === 12) {
+        return `A bed time of <strong>12:${String(m).padStart(2,'0')} PM (noon)</strong> seems unusual.<br>Did you mean <strong>00:${String(m).padStart(2,'0')}</strong> (midnight) or a late night time?`;
+    }
+
+    // Afternoon hours (13:00–19:59) — very unusual as a bed time
+    if (h >= 13 && h <= 19) {
+        return `A bed time of <strong>${h}:${String(m).padStart(2,'0')} (afternoon/evening)</strong> seems unusual.<br>Did you accidentally type the wrong time?`;
+    }
+
+    return null; // 20:00–03:59 are all normal bed times — no warning
 }
 
 // --- 7. FORM SUBMIT (new + edit) ---
@@ -308,6 +382,13 @@ if (sadhanaForm) {
         const hMin = parseInt(document.getElementById('hearing-mins').value) || 0;
         const nMin = parseInt(document.getElementById('notes-mins').value) || 0;
         const dsMin = parseInt(document.getElementById('day-sleep-minutes').value) || 0;
+
+        // --- Bed time sanity check ---
+        const bedWarning = getBedTimeWarning(slp);
+        if (bedWarning) {
+            const confirmed = await showBedTimeWarning(slp, bedWarning);
+            if (!confirmed) return; // user chose to fix — abort submit
+        }
 
         const sc = computeScores(slp, wak, mpTime, mpNotDone, chn, rMin, hMin, nMin, dsMin);
         const total = sc.sleep + sc.wakeup + sc.morningProgram + sc.chanting + sc.reading + sc.hearing + sc.notes + sc.daySleep;
@@ -365,7 +446,8 @@ if (sadhanaForm) {
                 scores: sc,
                 totalScore: total,
                 dayPercent: dayPercent,
-                submittedAt: firebase.firestore.FieldValue.serverTimestamp()
+                submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                wasEdited: editingDate !== null
             });
 
             const isEdit = editingDate !== null;
@@ -373,9 +455,7 @@ if (sadhanaForm) {
             alert(`${isEdit ? 'Updated' : 'Saved'}! Score: ${total}/175 (${dayPercent}%)`);
             switchTab('reports');
         } catch (error) {
-            console.error('SADHANA ERROR FULL:', error);
-            console.error('Error code:', error.code);
-            alert('Error saving: ' + error.message + '\n\nCode: ' + error.code + '\n\nPath: users/' + currentUser?.uid + '/sadhana/' + date);
+            alert('Error saving: ' + error.message);
         }
     };
 }
@@ -428,7 +508,9 @@ window.editEntry = async (dateStr) => {
     // Show edit banner
     editingDate = dateStr;
     document.getElementById('edit-mode-banner').style.display = 'flex';
-    document.getElementById('edit-mode-banner').querySelector('span').textContent = `Editing: ${dateStr}`;
+    // Target the second span (text label), not the first (emoji ✏️)
+    const bannerSpans = document.getElementById('edit-mode-banner').querySelectorAll('span');
+    if (bannerSpans[1]) bannerSpans[1].textContent = `Editing: ${dateStr}`;
     document.getElementById('sadhana-submit-btn').textContent = '💾 Update Entry';
 
     // Scroll to top
@@ -443,9 +525,13 @@ function cancelEdit() {
     if (banner) banner.style.display = 'none';
     const submitBtn = document.getElementById('sadhana-submit-btn');
     if (submitBtn) submitBtn.textContent = '✅ Submit Sadhana';
-    // Reset morning program to default state
-    toggleMorningProgram(false);
-    document.getElementById('morning-program-time').value = '';
+    // Null-guard: elements may not exist yet on first load / mobile slow render
+    const mpNoBtn = document.getElementById('mp-no-btn');
+    const mpTimeEl = document.getElementById('morning-program-time');
+    if (mpNoBtn && mpTimeEl) {
+        toggleMorningProgram(false);
+        mpTimeEl.value = '';
+    }
 }
 window.cancelEdit = cancelEdit;
 
@@ -527,20 +613,70 @@ window.viewEditHistory = async (dateStr) => {
         </div>`;
 };
 
-// --- SCORE BACKGROUND ---
+// --- SCORE CELL RENDERER ---
+// Returns {bg, color, text} matching the reference design:
+//   25 (max)  → plain bg, green bold text
+//   10–20     → light yellow bg, orange text
+//   0–9       → light yellow bg, muted text
+//   negative  → light red bg, red text in parentheses
+//   null/NR   → light red bg, red text in parentheses
+function scoreCell(score, isNR) {
+    if (isNR || score === null || score === undefined) {
+        // NR entries carry -5 per activity — show (-5) not the string "NR"
+        const val = (score !== null && score !== undefined) ? score : -5;
+        return { bg: '#fde8e8', color: '#e74c3c', text: `(${val})` };
+    }
+    if (score >= 25) return { bg: 'transparent', color: '#27ae60', text: String(score) };
+    if (score > 0)   return { bg: '#fffde7',     color: '#f39c12', text: String(score) };
+    if (score === 0) return { bg: '#fffde7',     color: '#888',    text: '0' };
+    return { bg: '#fde8e8', color: '#e74c3c', text: `(${score})` };
+}
+function renderScoreCell(score, isNR) {
+    const s = scoreCell(score, isNR);
+    return `<td style="background:${s.bg};color:${s.color};font-weight:700;text-align:center;padding:7px 5px;">${s.text}</td>`;
+}
+// Legacy wrapper kept for any remaining callers
 function getScoreBackground(score) {
-    if (score === null || score === undefined) return '#ffcdd2';
-    if (score >= 20) return '#c8e6c9';
-    if (score >= 15) return '#fff9c4';
-    if (score >= 10) return '#ffe0b2';
-    if (score >= 0) return '#ffebee';
-    return '#ffcdd2';
+    if (score === null || score === undefined) return '#fde8e8';
+    if (score >= 25) return 'transparent';
+    if (score > 0)   return '#fffde7';
+    if (score === 0) return '#fffde7';
+    return '#fde8e8';
 }
 
 // --- 8. REPORTS ---
+let _reportsLoading = false; // debounce guard — prevents duplicate loads on mobile auth re-fires
 async function loadReports(userId, containerId) {
+    if (_reportsLoading) return;
+    _reportsLoading = true;
     const container = document.getElementById(containerId);
-    const snap = await db.collection('users').doc(userId).collection('sadhana').get();
+    if (!container) { _reportsLoading = false; return; } // Guard: always reset flag
+
+    // Show loading state immediately — critical for mobile on slow connections
+    container.innerHTML = `
+        <div style="text-align:center;padding:40px 20px;color:#888;">
+            <div style="font-size:28px;margin-bottom:10px;">⏳</div>
+            <div style="font-weight:600;">Loading reports…</div>
+            <div style="font-size:12px;margin-top:6px;">Fetching your data</div>
+        </div>`;
+
+    let snap;
+    try {
+        snap = await db.collection('users').doc(userId).collection('sadhana').get();
+    } catch (err) {
+        container.innerHTML = `
+            <div style="text-align:center;padding:40px 20px;background:#fff0f0;border-radius:10px;color:#e74c3c;">
+                <div style="font-size:28px;margin-bottom:10px;">⚠️</div>
+                <div style="font-weight:700;margin-bottom:6px;">Could not load reports</div>
+                <div style="font-size:13px;color:#666;margin-bottom:16px;">${err.message}</div>
+                <button onclick="_reportsLoading=false;loadReports('${userId}','${containerId}')"
+                    style="padding:10px 24px;background:#3498db;color:white;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;width:auto;">
+                    🔄 Retry
+                </button>
+            </div>`;
+        _reportsLoading = false;
+        return;
+    }
 
     const weeksData = {};
     snap.forEach(doc => {
@@ -557,91 +693,136 @@ async function loadReports(userId, containerId) {
     thisWeekSun.setDate(today.getDate() - today.getDay());
 
     // Build a set of ALL weeks to show: last 4 + any older weeks with data
+    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const fmtDate = d => `${String(d.getDate()).padStart(2,'0')} ${MONTHS[d.getMonth()]}`;
     const last4Suns = new Set();
     for (let w = 0; w < 4; w++) {
         const sun = new Date(thisWeekSun);
         sun.setDate(thisWeekSun.getDate() - w * 7);
-        const sunStr = sun.toISOString().split('T')[0];
+        const sunStr = toLocalDateStr(sun);
         last4Suns.add(sunStr);
-        // Ensure these weeks exist in weeksData even if empty
         if (!weeksData[sunStr]) {
             const sat = new Date(sun); sat.setDate(sun.getDate() + 6);
-            const fmt = d => `${String(d.getDate()).padStart(2,'0')} ${d.toLocaleString('en-GB',{month:'short'})}`;
-            weeksData[sunStr] = { label: `${fmt(sun)} to ${fmt(sat)}_${sun.getFullYear()}`, sunStr, days: {} };
+            weeksData[sunStr] = { label: `${fmtDate(sun)} to ${fmtDate(sat)}_${sun.getFullYear()}`, sunStr, days: {} };
         }
     }
 
-    // 4-week comparison (always runs with weeksData)
-    generate4WeekComparison([], weeksData);
+    // 4-week comparison is rendered AFTER weekly reports (called below after container.innerHTML)
 
-    if (snap.empty && Object.keys(weeksData).every(k => Object.keys(weeksData[k].days).length === 0)) {
-        container.innerHTML = '<p style="text-align:center; color:#999; padding:40px;">No sadhana data yet. Start tracking!</p>';
-        return;
-    }
-
-    // All weeks to display: last 4 + older filled weeks, newest first
+    // Always show last 4 weeks in detailed reports, even if all NR
+    // Only show "no data" if we have zero weeks to show at all (impossible since we always add 4)
     const allSuns = new Set([...last4Suns, ...Object.keys(weeksData)]);
     const sortedWeeks = Array.from(allSuns).sort((a, b) => b.localeCompare(a));
 
     let html = '';
     sortedWeeks.forEach(sunStr => {
         const week = weeksData[sunStr];
-        const weekStart = new Date(sunStr);
+        const weekStart = new Date(sunStr + 'T00:00:00');
         const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
         let weekTotals = { total: 0, readingMins: 0, hearingMins: 0, notesMins: 0, notesMarks: 0, sleepMarks: 0, wakeupMarks: 0, morningMarks: 0, chantingMarks: 0, readingMarks: 0, hearingMarks: 0, daySleepMarks: 0 };
 
         let tableRows = '';
+        const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+
+        // First pass: accumulate totals — ONLY past days (skip future entirely)
         for (let i = 0; i < 7; i++) {
             const currentDate = new Date(weekStart);
-            currentDate.setDate(currentDate.getDate() + i);
-            const dateStr = currentDate.toISOString().split('T')[0];
+            currentDate.setDate(weekStart.getDate() + i);
+            const dateStr = toLocalDateStr(currentDate);
+            const isFuture = currentDate > todayStart;
+            if (isFuture) continue; // future days don't count toward totals
+
             const entry = week.days[dateStr] || getNRData(dateStr);
             const isNR = !week.days[dateStr];
 
-            weekTotals.total += entry.totalScore ?? 0;
-            weekTotals.readingMins += (entry.readingMinutes === 'NR' ? 0 : entry.readingMinutes) || 0;
-            weekTotals.hearingMins += (entry.hearingMinutes === 'NR' ? 0 : entry.hearingMinutes) || 0;
-            weekTotals.notesMins += (entry.notesMinutes === 'NR' ? 0 : entry.notesMinutes) || 0;
-            weekTotals.notesMarks += entry.scores?.notes || 0;
-            weekTotals.sleepMarks += entry.scores?.sleep || 0;
-            weekTotals.wakeupMarks += entry.scores?.wakeup || 0;
-            weekTotals.morningMarks += entry.scores?.morningProgram || 0;
-            weekTotals.chantingMarks += entry.scores?.chanting || 0;
-            weekTotals.readingMarks += entry.scores?.reading || 0;
-            weekTotals.hearingMarks += entry.scores?.hearing || 0;
-            weekTotals.daySleepMarks += entry.scores?.daySleep || 0;
+            weekTotals.total        += entry.totalScore ?? 0;
+            weekTotals.readingMins  += (entry.readingMinutes  === 'NR' ? 0 : entry.readingMinutes)  || 0;
+            weekTotals.hearingMins  += (entry.hearingMinutes  === 'NR' ? 0 : entry.hearingMinutes)  || 0;
+            weekTotals.notesMins    += (entry.notesMinutes    === 'NR' ? 0 : entry.notesMinutes)    || 0;
+            weekTotals.notesMarks   += entry.scores?.notes    ?? 0;
+            weekTotals.sleepMarks   += entry.scores?.sleep    ?? 0;
+            weekTotals.wakeupMarks  += entry.scores?.wakeup   ?? 0;
+            weekTotals.morningMarks += entry.scores?.morningProgram ?? 0;
+            weekTotals.chantingMarks+= entry.scores?.chanting ?? 0;
+            weekTotals.readingMarks += entry.scores?.reading  ?? 0;
+            weekTotals.hearingMarks += entry.scores?.hearing  ?? 0;
+            weekTotals.daySleepMarks+= entry.scores?.daySleep ?? 0;
+        }
+
+        // Second pass: render rows newest-day-first (Sat→Sun = i from 6 down to 0)
+        for (let i = 6; i >= 0; i--) {
+            const currentDate = new Date(weekStart);
+            currentDate.setDate(weekStart.getDate() + i);
+            const dateStr = toLocalDateStr(currentDate);
+            const isFuture = currentDate > todayStart;
+
+            // Future dates — skip entirely, no row shown
+            if (isFuture) continue;
+
+            const entry = week.days[dateStr] || getNRData(dateStr);
+            const isNR = !week.days[dateStr];
+            const hasBeenEdited = !isNR && entry.wasEdited === true;
 
             const dayPercent = entry.dayPercent ?? -23;
-            const percentColor = dayPercent >= 80 ? 'green' : dayPercent >= 60 ? 'orange' : 'red';
-            const mpDisplay = entry.morningProgramTime === 'Not Done' ? '<span style="color:#e74c3c;font-size:0.85em;">Not Done</span>' : (entry.morningProgramTime || 'NR');
 
-            // CHANGE 2: Edit + History buttons on each day row
-            const editBtn = !isNR
-                ? `<button onclick="editEntry('${dateStr}')" style="padding:2px 8px;font-size:11px;background:#3498db;width:auto;margin:0 2px 2px 0;border-radius:4px;">✏️ Edit</button>
-                   <button onclick="viewEditHistory('${dateStr}')" style="padding:2px 8px;font-size:11px;background:#9b59b6;width:auto;margin:0;border-radius:4px;">🕓 History</button>`
-                : `<button onclick="editEntry('${dateStr}')" style="padding:2px 8px;font-size:11px;background:#27ae60;width:auto;margin:0;border-radius:4px;">+ Fill</button>`;
+            // Pass/Fail badge — past entries only (future rows handled above via continue)
+            let pfBadge = '';
+            if (isNR) {
+                pfBadge = '<span style="display:inline-block;padding:2px 7px;border-radius:20px;font-size:10px;font-weight:700;background:#fde8e8;color:#e74c3c;border:1px solid #f5c6c6;">Fail</span>';
+            } else if (dayPercent >= 50) {
+                pfBadge = '<span style="display:inline-block;padding:2px 7px;border-radius:20px;font-size:10px;font-weight:700;background:#e8f8f0;color:#27ae60;border:1px solid #a9dfbf;">Pass</span>';
+            } else {
+                pfBadge = '<span style="display:inline-block;padding:2px 7px;border-radius:20px;font-size:10px;font-weight:700;background:#fde8e8;color:#e74c3c;border:1px solid #f5c6c6;">Fail</span>';
+            }
+
+            // Date label with optional edit history pencil
+            // Use data-date attribute to avoid quote-in-quote issues on mobile browsers
+            const editedFlag = hasBeenEdited
+                ? ` <span class="edit-hist-btn" data-date="${dateStr}" title="Entry was edited" style="color:#9b59b6;font-size:10px;cursor:pointer;">✏️</span>`
+                : '';
+            const dateLabel = `<strong>${String(currentDate.getDate()).padStart(2,'0')}/${String(currentDate.getMonth()+1).padStart(2,'0')}${editedFlag}</strong>`;
+
+            // Action button — NR gets Fill, filled gets Edit
+            const actionBtn = isNR
+                ? `<button class="fill-btn" data-date="${dateStr}" style="padding:3px 9px;font-size:11px;background:#27ae60;color:white;width:auto;margin:0;border-radius:12px;border:none;cursor:pointer;font-weight:600;">+ Fill</button>`
+                : `<button class="edit-btn" data-date="${dateStr}" title="Edit entry" style="padding:3px 8px;font-size:13px;background:transparent;color:#3498db;width:auto;margin:0;border:none;cursor:pointer;">✏️</button>`;
+
+            // Value display helpers
+            const tv = (val) => (val === 'NR' || val === undefined || val === null) ? '<span style="color:#e74c3c;font-weight:600;">NR</span>' : val;
+            const mv = (mins) => (mins === 'NR' || mins === undefined || mins === null) ? '<span style="color:#e74c3c;">NR</span>' : `${mins}m`;
+            const mpVal = entry.morningProgramTime === 'Not Done'
+                ? '<span style="color:#e74c3c;font-size:0.85em;">✗ ND</span>'
+                : tv(entry.morningProgramTime);
+            const dsVal = entry.daySleepMinutes === 'NR' ? '<span style="color:#e74c3c;">NR</span>' : `${entry.daySleepMinutes ?? 0}m`;
+
+            // Day % cell
+            const pctColor = dayPercent >= 70 ? '#27ae60' : dayPercent >= 50 ? '#f39c12' : '#e74c3c';
+            const pctBg    = dayPercent >= 50 ? '#f0fff4' : '#fff0f0';
+            const rowBg = isNR ? 'background:#fff8f8;' : '';
 
             tableRows += `
-                <tr>
-                    <td><strong>${dayNames[i]} ${currentDate.getDate()}</strong><br>${editBtn}</td>
-                    <td>${entry.sleepTime}</td>
-                    <td style="background:${getScoreBackground(entry.scores?.sleep)};font-weight:bold;">${entry.scores?.sleep}</td>
-                    <td>${entry.wakeupTime}</td>
-                    <td style="background:${getScoreBackground(entry.scores?.wakeup)};font-weight:bold;">${entry.scores?.wakeup}</td>
-                    <td>${entry.chantingTime}</td>
-                    <td style="background:${getScoreBackground(entry.scores?.chanting)};font-weight:bold;">${entry.scores?.chanting}</td>
-                    <td>${mpDisplay}</td>
-                    <td style="background:${getScoreBackground(entry.scores?.morningProgram)};font-weight:bold;">${entry.scores?.morningProgram ?? 0}</td>
-                    <td>${entry.daySleepMinutes !== 'NR' ? entry.daySleepMinutes : 'NR'}</td>
-                    <td style="background:${getScoreBackground(entry.scores?.daySleep)};font-weight:bold;">${entry.scores?.daySleep}</td>
-                    <td>${entry.readingMinutes !== 'NR' ? entry.readingMinutes : 'NR'}</td>
-                    <td style="background:${getScoreBackground(entry.scores?.reading)};font-weight:bold;">${entry.scores?.reading}</td>
-                    <td>${entry.hearingMinutes !== 'NR' ? entry.hearingMinutes : 'NR'}</td>
-                    <td style="background:${getScoreBackground(entry.scores?.hearing)};font-weight:bold;">${entry.scores?.hearing}</td>
-                    <td>${entry.notesMinutes !== 'NR' ? entry.notesMinutes : 'NR'}</td>
-                    <td style="background:${getScoreBackground(entry.scores?.notes)};font-weight:bold;">${entry.scores?.notes}</td>
-                    <td style="color:${percentColor};font-weight:bold;">${dayPercent}%</td>
+                <tr style="${rowBg}border-bottom:1px solid #f0f0f0;">
+                    <td style="text-align:center;padding:7px 5px;">${pfBadge}</td>
+                    <td style="white-space:nowrap;padding:7px 8px;font-size:13px;">${dateLabel}</td>
+                    <td style="padding:7px 6px;font-size:12px;white-space:nowrap;color:${isNR?'#e74c3c':'#333'};">${tv(entry.sleepTime)}</td>
+                    ${renderScoreCell(entry.scores?.sleep, isNR)}
+                    <td style="padding:7px 6px;font-size:12px;white-space:nowrap;color:${isNR?'#e74c3c':'#333'};">${tv(entry.wakeupTime)}</td>
+                    ${renderScoreCell(entry.scores?.wakeup, isNR)}
+                    <td style="padding:7px 6px;font-size:12px;white-space:nowrap;color:${isNR?'#e74c3c':'#333'};">${tv(entry.chantingTime)}</td>
+                    ${renderScoreCell(entry.scores?.chanting, isNR)}
+                    <td style="padding:7px 6px;font-size:12px;white-space:nowrap;">${mpVal}</td>
+                    ${renderScoreCell(entry.scores?.morningProgram, isNR)}
+                    <td style="padding:7px 6px;font-size:12px;text-align:center;">${dsVal}</td>
+                    ${renderScoreCell(entry.scores?.daySleep, isNR)}
+                    <td style="padding:7px 6px;font-size:12px;text-align:center;">${mv(entry.readingMinutes)}</td>
+                    ${renderScoreCell(entry.scores?.reading, isNR)}
+                    <td style="padding:7px 6px;font-size:12px;text-align:center;">${mv(entry.hearingMinutes)}</td>
+                    ${renderScoreCell(entry.scores?.hearing, isNR)}
+                    <td style="padding:7px 6px;font-size:12px;text-align:center;">${mv(entry.notesMinutes)}</td>
+                    ${renderScoreCell(entry.scores?.notes, isNR)}
+                    <td style="background:${pctBg};color:${pctColor};font-weight:700;text-align:center;padding:7px 5px;font-size:12px;">${dayPercent}%</td>
+                    <td style="text-align:center;padding:5px;white-space:nowrap;">${actionBtn}</td>
                 </tr>
             `;
         }
@@ -649,66 +830,104 @@ async function loadReports(userId, containerId) {
         let adjustedNotesMarks = weekTotals.notesMarks;
         if (weekTotals.notesMins >= 245) adjustedNotesMarks = 175;
         const adjustedTotal = weekTotals.total - weekTotals.notesMarks + adjustedNotesMarks;
-        // Fair denominator: count only past days (not future days in current week)
         let elapsedDays = 0;
         for (let i = 0; i < 7; i++) {
             const d = new Date(weekStart); d.setDate(weekStart.getDate() + i);
-            if (d <= new Date()) elapsedDays++;
+            const today2 = new Date(); today2.setHours(23,59,59,0);
+            if (d <= today2) elapsedDays++;
         }
         const fairMax = elapsedDays * 175;
         const weekPercent = Math.round((adjustedTotal / 1225) * 100);
         const fairPercent = fairMax > 0 ? Math.round((adjustedTotal / fairMax) * 100) : 0;
         const weekClass = adjustedTotal < 735 ? 'low-score' : '';
 
+        // Total row score cell helper (no isNR, uses total value)
+        const totCell = (val, max) => {
+            const bg = val < 0 ? '#fde8e8' : val >= max * 0.7 ? '#e8f8f0' : '#fffde7';
+            const cl = val < 0 ? '#e74c3c' : val >= max * 0.7 ? '#27ae60' : '#f39c12';
+            const txt = val < 0 ? `(${val})` : String(val);
+            return `<td style="background:${bg};color:${cl};font-weight:700;text-align:center;padding:7px 5px;">${txt}</td>`;
+        };
+        const pctCell = (val, max) => {
+            const pct = max > 0 ? Math.round((val/max)*100) : 0;
+            const bg = pct < 0 ? '#fde8e8' : pct >= 70 ? '#e8f8f0' : '#fffde7';
+            const cl = pct < 0 ? '#e74c3c' : pct >= 70 ? '#27ae60' : '#f39c12';
+            return `<td colspan="2" style="background:${bg};color:${cl};font-weight:700;text-align:center;padding:6px 4px;font-size:12px;">${pct}%</td>`;
+        };
+
         html += `
             <div class="week-card ${weekClass}">
                 <div class="week-header" onclick="this.nextElementSibling.classList.toggle('expanded'); this.querySelector('.toggle-icon').textContent = this.nextElementSibling.classList.contains('expanded') ? '▼' : '▶';">
-                    <span>${week.label.split('_')[0]}</span>
-                    <span>${adjustedTotal}/${fairMax} &nbsp;|&nbsp; Fair: ${fairPercent}% &nbsp;|&nbsp; Overall: ${weekPercent}% <span class="toggle-icon">▶</span></span>
+                    <span>📅 ${week.label.split('_')[0]}</span>
+                    <span style="color:${fairPercent>=50?'#27ae60':'#e74c3c'};">${adjustedTotal}/${fairMax} (${fairPercent}%) <span class="toggle-icon">▶</span></span>
                 </div>
                 <div class="week-content">
                     <div style="overflow-x:auto;">
-                    <table class="daily-table">
+                    <table class="daily-table" style="font-size:13px;">
                         <thead>
-                            <tr style="background:var(--secondary);color:black;">
-                                <th>Day</th><th>Bed Time</th><th>Mks</th><th>Wake Up</th><th>Mks</th>
-                                <th>Japa</th><th>Mks</th><th>Morn. Prog</th><th>Mks</th><th>Day Sleep</th><th>Mks</th>
-                                <th>Pathan</th><th>Mks</th><th>Sarwan</th><th>Mks</th><th>Notes Rev.</th><th>Mks</th><th>Day %</th>
+                            <tr style="background:#2c3e50;color:white;font-size:12px;">
+                                <th style="padding:8px 5px;text-align:center;min-width:44px;">P/F</th>
+                                <th style="padding:8px 6px;white-space:nowrap;min-width:52px;">Date</th>
+                                <th style="padding:8px 6px;white-space:nowrap;">Bed</th>
+                                <th style="padding:8px 4px;text-align:center;min-width:32px;">M</th>
+                                <th style="padding:8px 6px;white-space:nowrap;">Wake</th>
+                                <th style="padding:8px 4px;text-align:center;min-width:32px;">M</th>
+                                <th style="padding:8px 6px;white-space:nowrap;">Chant</th>
+                                <th style="padding:8px 4px;text-align:center;min-width:32px;">M</th>
+                                <th style="padding:8px 6px;white-space:nowrap;">Morn.Prog</th>
+                                <th style="padding:8px 4px;text-align:center;min-width:32px;">M</th>
+                                <th style="padding:8px 4px;text-align:center;white-space:nowrap;">DS</th>
+                                <th style="padding:8px 4px;text-align:center;min-width:32px;">M</th>
+                                <th style="padding:8px 4px;text-align:center;white-space:nowrap;">Read</th>
+                                <th style="padding:8px 4px;text-align:center;min-width:32px;">M</th>
+                                <th style="padding:8px 4px;text-align:center;white-space:nowrap;">Hear</th>
+                                <th style="padding:8px 4px;text-align:center;min-width:32px;">M</th>
+                                <th style="padding:8px 4px;text-align:center;white-space:nowrap;">Notes</th>
+                                <th style="padding:8px 4px;text-align:center;min-width:32px;">M</th>
+                                <th style="padding:8px 4px;text-align:center;min-width:44px;">Day%</th>
+                                <th style="padding:8px 6px;text-align:center;min-width:44px;">Edit</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${tableRows}
-                            <tr style="background:#f0f4ff;font-weight:bold;">
-                                <td>Total/1225</td><td>—</td>
-                                <td style="background:lightgreen;">${weekTotals.sleepMarks}</td><td>—</td>
-                                <td style="background:lightgreen;">${weekTotals.wakeupMarks}</td><td>—</td>
-                                <td style="background:lightgreen;">${weekTotals.chantingMarks}</td><td>—</td>
-                                <td style="background:lightgreen;">${weekTotals.morningMarks}</td><td>—</td>
-                                <td style="background:lightgreen;">${weekTotals.daySleepMarks}</td>
-                                <td>${weekTotals.readingMins}</td><td style="background:lightgreen;">${weekTotals.readingMarks}</td>
-                                <td>${weekTotals.hearingMins}</td><td style="background:lightgreen;">${weekTotals.hearingMarks}</td>
-                                <td>${weekTotals.notesMins}</td><td style="background:lightgreen;">${adjustedNotesMarks}</td><td>—</td>
+                            <tr style="background:#f0f4ff;font-weight:bold;font-size:12px;">
+                                <td colspan="2" style="padding:7px 8px;color:#2c3e50;">Total</td>
+                                <td style="padding:7px 4px;text-align:center;color:#888;">—</td>
+                                ${totCell(weekTotals.sleepMarks, 175)}
+                                <td style="padding:7px 4px;text-align:center;color:#888;">—</td>
+                                ${totCell(weekTotals.wakeupMarks, 175)}
+                                <td style="padding:7px 4px;text-align:center;color:#888;">—</td>
+                                ${totCell(weekTotals.chantingMarks, 175)}
+                                <td style="padding:7px 4px;text-align:center;color:#888;">—</td>
+                                ${totCell(weekTotals.morningMarks, 175)}
+                                <td style="padding:7px 4px;text-align:center;color:#888;">—</td>
+                                ${totCell(weekTotals.daySleepMarks, 70)}
+                                <td style="padding:7px 4px;text-align:center;font-size:11px;color:#555;">${weekTotals.readingMins}m</td>
+                                ${totCell(weekTotals.readingMarks, 175)}
+                                <td style="padding:7px 4px;text-align:center;font-size:11px;color:#555;">${weekTotals.hearingMins}m</td>
+                                ${totCell(weekTotals.hearingMarks, 175)}
+                                <td style="padding:7px 4px;text-align:center;font-size:11px;color:#555;">${weekTotals.notesMins}m</td>
+                                ${totCell(adjustedNotesMarks, 175)}
+                                <td colspan="2" style="padding:7px 4px;text-align:center;color:#888;">—</td>
                             </tr>
-                            <tr style="background:#e8f5e9;font-weight:bold;">
-                                <td>Sadhna %</td>
-                                <td colspan="2" style="background:lightgreen;font-size:1.1em;">${Math.round((weekTotals.sleepMarks/175)*100)}%</td>
-                                <td colspan="2" style="background:lightgreen;font-size:1.1em;">${Math.round((weekTotals.wakeupMarks/175)*100)}%</td>
-                                <td colspan="2" style="background:lightgreen;font-size:1.1em;">${Math.round((weekTotals.chantingMarks/175)*100)}%</td>
-                                <td colspan="2" style="background:lightgreen;font-size:1.1em;">${Math.round((weekTotals.morningMarks/175)*100)}%</td>
-                                <td colspan="2" style="background:lightgreen;font-size:1.1em;">${Math.round((weekTotals.daySleepMarks/70)*100)}%</td>
-                                <td colspan="2" style="background:lightgreen;font-size:1.1em;">${Math.round((weekTotals.readingMarks/175)*100)}%</td>
-                                <td colspan="2" style="background:lightgreen;font-size:1.1em;">${Math.round((weekTotals.hearingMarks/175)*100)}%</td>
-                                <td colspan="2" style="background:lightgreen;font-size:1.1em;">${Math.round((adjustedNotesMarks/175)*100)}%</td>
-                                <td>—</td>
+                            <tr style="background:#e8f0fe;font-weight:bold;font-size:12px;">
+                                <td colspan="2" style="padding:6px 8px;color:#2c3e50;">Sadhna %</td>
+                                ${pctCell(weekTotals.sleepMarks, 175)}
+                                ${pctCell(weekTotals.wakeupMarks, 175)}
+                                ${pctCell(weekTotals.chantingMarks, 175)}
+                                ${pctCell(weekTotals.morningMarks, 175)}
+                                ${pctCell(weekTotals.daySleepMarks, 70)}
+                                ${pctCell(weekTotals.readingMarks, 175)}
+                                ${pctCell(weekTotals.hearingMarks, 175)}
+                                ${pctCell(adjustedNotesMarks, 175)}
+                                <td colspan="2" style="padding:6px 4px;text-align:center;color:#888;">—</td>
                             </tr>
                         </tbody>
                     </table>
                     </div>
-                    <div style="margin-top:15px;padding:15px;background:var(--secondary);color:white;border-radius:8px;text-align:center;">
-                        <strong style="font-size:1.2em;">OVERALL: ${adjustedTotal}/1225 (${weekPercent}%)</strong>
-                        &nbsp;&nbsp;|&nbsp;&nbsp;
-                        <strong style="font-size:1.2em;">Fair %: ${adjustedTotal}/${fairMax} (${fairPercent}%)</strong>
-                        <div style="font-size:11px;opacity:0.85;margin-top:4px;">Fair % = score ÷ (${elapsedDays} elapsed days × 175)</div>
+                    <div style="margin-top:12px;padding:12px 16px;background:${fairPercent>=50?'#27ae60':'#e74c3c'};color:white;border-radius:8px;text-align:center;">
+                        <strong style="font-size:1.2em;">OVERALL: ${adjustedTotal}/${fairMax} (${fairPercent}%)</strong>
+                        <div style="font-size:11px;opacity:0.85;margin-top:3px;">Based on ${elapsedDays} elapsed days × 175 pts each</div>
                     </div>
                 </div>
             </div>
@@ -716,6 +935,28 @@ async function loadReports(userId, containerId) {
     });
 
     container.innerHTML = html;
+
+    // Render 4-week trend comparison AFTER weekly reports are in the DOM
+    try {
+        generate4WeekComparison([], weeksData);
+    } catch(e) {
+        console.error('4-week comparison error:', e);
+    }
+
+    // Event delegation — handles fill-btn, edit-btn, edit-hist-btn
+    if (container._reportClickHandler) {
+        container.removeEventListener('click', container._reportClickHandler);
+    }
+    container._reportClickHandler = (e) => {
+        const fillBtn = e.target.closest('.fill-btn');
+        const editBtn = e.target.closest('.edit-btn');
+        const histBtn = e.target.closest('.edit-hist-btn');
+        if (fillBtn) { editEntry(fillBtn.dataset.date); return; }
+        if (editBtn) { editEntry(editBtn.dataset.date); return; }
+        if (histBtn) { viewEditHistory(histBtn.dataset.date); return; }
+    };
+    container.addEventListener('click', container._reportClickHandler);
+    _reportsLoading = false; // always reset — even if comparison threw
 }
 
 // 4-week comparison — always shows 4 weeks (NR for missing), trend oldest→newest, fair denominator
@@ -732,26 +973,26 @@ function generate4WeekComparison(weeksNewestFirst, weeksData) {
     for (let w = 3; w >= 0; w--) {
         const sun = new Date(thisWeekSun);
         sun.setDate(thisWeekSun.getDate() - w * 7);
-        last4Suns.push(sun.toISOString().split('T')[0]);
+        last4Suns.push(toLocalDateStr(sun));
     }
 
     // Compute stats for each of the 4 weeks (oldest first for trend calculation)
     const weekStats = last4Suns.map(sunStr => {
         const week = weeksData[sunStr];
-        const weekStart = new Date(sunStr);
+        const weekStart = new Date(sunStr + 'T00:00:00');
         let weekTotal = 0, weekNotesMins = 0, weekNotesMarks = 0, filledDays = 0;
 
         for (let i = 0; i < 7; i++) {
             const currentDate = new Date(weekStart);
             currentDate.setDate(weekStart.getDate() + i);
-            const dateStr = currentDate.toISOString().split('T')[0];
-            const isFuture = new Date(dateStr) > today;
+            const dateStr = toLocalDateStr(currentDate);
+            const isFuture = new Date(dateStr + 'T00:00:00') > today;
             if (isFuture) continue; // skip future days entirely for fair denominator
             const entry = (week && week.days[dateStr]) ? week.days[dateStr] : getNRData(dateStr);
             const isFilled = !!(week && week.days[dateStr]);
             weekTotal += entry.totalScore ?? 0;
             weekNotesMins += (isFilled && entry.notesMinutes !== 'NR') ? (entry.notesMinutes || 0) : 0;
-            weekNotesMarks += entry.scores?.notes || 0;
+            weekNotesMarks += entry.scores?.notes ?? 0;
             filledDays++;
         }
 
@@ -764,9 +1005,10 @@ function generate4WeekComparison(weeksNewestFirst, weeksData) {
         const rawPercent = Math.round((adjustedTotal / 1225) * 100);
 
         // Label
-        const sunDate = new Date(sunStr);
-        const sat = new Date(sunStr); sat.setDate(sunDate.getDate() + 6);
-        const fmt = d => `${String(d.getDate()).padStart(2,'0')} ${d.toLocaleString('en-GB',{month:'short'})}`;
+        const MONTHS_CMP = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        const sunDate = new Date(sunStr + 'T00:00:00');
+        const sat = new Date(sunStr + 'T00:00:00'); sat.setDate(sunDate.getDate() + 6);
+        const fmt = d => `${String(d.getDate()).padStart(2,'0')} ${MONTHS_CMP[d.getMonth()]}`;
         const label = `${fmt(sunDate)} – ${fmt(sat)}`;
 
         return { sunStr, label, adjustedTotal, maxPossible, fairPercent, rawPercent, filledDays };
@@ -864,14 +1106,15 @@ let _currentActivityTotals = null;
 
 async function generateDailyCharts() {
     const today = new Date();
+    const todayStr = toLocalDateStr(today);
     const dates = [];
     for (let i = 27; i >= 0; i--) {
         const d = new Date(today);
         d.setDate(today.getDate() - i);
-        dates.push(d.toISOString().split('T')[0]);
+        dates.push(toLocalDateStr(d));  // IST-safe local date
     }
 
-    // Firestore v8 'in' limit is 10 — use date range query instead
+    // Use date range query — works for any number of dates
     const snapshot = await db.collection('users').doc(currentUser.uid)
         .collection('sadhana')
         .where(firebase.firestore.FieldPath.documentId(), '>=', dates[0])
@@ -881,30 +1124,37 @@ async function generateDailyCharts() {
     const data = {};
     snapshot.forEach(doc => { data[doc.id] = doc.data(); });
 
-    const labels = dates.map(d => new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }));
-    const scores = dates.map(d => (data[d] !== undefined ? (data[d].totalScore ?? null) : null));
+    const labels = dates.map(d => (() => { const _d = new Date(d + 'T00:00:00'); const _M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return String(_d.getDate()).padStart(2,'0')+' '+_M[_d.getMonth()]; })());
+    // NR past days = -40 shown on chart; today unfilled = null (gap, no penalty yet)
+    const scores = dates.map(d => {
+        if (data[d] !== undefined) return data[d].totalScore ?? null;
+        if (d === todayStr) return null;
+        return -40;
+    });
 
-    // Activity-wise total marks (sum across all 28 days)
+    // Activity totals: NR past days contribute penalty scores (same as getNRData)
+    const NR_SCORES = { sleep: -5, wakeup: -5, morningProgram: -5, chanting: -5, reading: -5, hearing: -5, notes: -5, daySleep: 0 };
+    const getS = (d, key) => data[d] ? (data[d]?.scores?.[key] ?? 0) : (d === todayStr ? 0 : NR_SCORES[key]);
     _currentActivityTotals = {
-        Sleep:           dates.reduce((s, d) => s + (data[d]?.scores?.sleep || 0), 0),
-        'Wake-up':       dates.reduce((s, d) => s + (data[d]?.scores?.wakeup || 0), 0),
-        'Morning Prog.': dates.reduce((s, d) => s + (data[d]?.scores?.morningProgram || 0), 0),
-        Chanting:        dates.reduce((s, d) => s + (data[d]?.scores?.chanting || 0), 0),
-        Reading:         dates.reduce((s, d) => s + (data[d]?.scores?.reading || 0), 0),
-        Hearing:         dates.reduce((s, d) => s + (data[d]?.scores?.hearing || 0), 0),
-        'Notes Rev.':    dates.reduce((s, d) => s + (data[d]?.scores?.notes || 0), 0),
-        'Day Sleep':     dates.reduce((s, d) => s + (data[d]?.scores?.daySleep || 0), 0),
+        Sleep:           dates.reduce((s, d) => s + getS(d, 'sleep'), 0),
+        'Wake-up':       dates.reduce((s, d) => s + getS(d, 'wakeup'), 0),
+        'Morning Prog.': dates.reduce((s, d) => s + getS(d, 'morningProgram'), 0),
+        Chanting:        dates.reduce((s, d) => s + getS(d, 'chanting'), 0),
+        Reading:         dates.reduce((s, d) => s + getS(d, 'reading'), 0),
+        Hearing:         dates.reduce((s, d) => s + getS(d, 'hearing'), 0),
+        'Notes Rev.':    dates.reduce((s, d) => s + getS(d, 'notes'), 0),
+        'Day Sleep':     dates.reduce((s, d) => s + getS(d, 'daySleep'), 0),
     };
 
-    // Ring: based on days with data only (fair)
-    const submittedDays = dates.filter(d => data[d]).length;
-    const maxPossible = submittedDays * 175;
-    const totalEarned = scores.filter(s => s !== null).reduce((a, b) => a + b, 0);
+    // Ring: include NR past days at -40, exclude today if not yet filled
+    const datesForRing = dates.filter(d => d !== todayStr || data[d]);
+    const totalEarned = datesForRing.reduce((s, d) => s + (data[d] ? (data[d].totalScore ?? 0) : -40), 0);
+    const maxPossible = datesForRing.length * 175;
     const fairPercent = maxPossible > 0 ? Math.round((totalEarned / maxPossible) * 100) : 0;
 
     const ringContainer = document.getElementById('score-ring-container');
-    if (ringContainer) ringContainer.style.display = submittedDays > 0 ? 'block' : 'none';
-    if (submittedDays > 0) renderScoreRing(fairPercent, `${dates[0].slice(5).replace('-','/')} – ${dates[27].slice(5).replace('-','/')}`, submittedDays, totalEarned);
+    if (ringContainer) ringContainer.style.display = datesForRing.length > 0 ? 'block' : 'none';
+    if (datesForRing.length > 0) renderScoreRing(fairPercent, `${dates[0].slice(5).replace('-','/')} – ${dates[27].slice(5).replace('-','/')}`, datesForRing.length, totalEarned);
 
     renderScoreLineChart(labels, scores);
     renderActivityBarChart(_currentActivityTotals);
@@ -930,7 +1180,7 @@ async function generateWeeklyCharts() {
         for (let i = 0; i < 7; i++) {
             const d = new Date(weekStart);
             d.setDate(weekStart.getDate() + i);
-            weekDates.push(d.toISOString().split('T')[0]);
+            weekDates.push(toLocalDateStr(d));
         }
 
         // Use range query — safe and no 'in' limit issue
@@ -940,9 +1190,22 @@ async function generateWeeklyCharts() {
             .where(firebase.firestore.FieldPath.documentId(), '<=', weekDates[6])
             .get();
 
+        const today2 = new Date();
+        const todayStr2 = toLocalDateStr(today2);
         let weekTotal = 0, weekDayCount = 0;
         const wData = {};
-        snapshot.forEach(doc => { wData[doc.id] = doc.data(); weekTotal += doc.data().totalScore || 0; weekDayCount++; });
+        snapshot.forEach(doc => { wData[doc.id] = doc.data(); });
+
+        // Count all past days in week (submitted or NR), skip future
+        weekDates.forEach(dateStr => {
+            if (dateStr > todayStr2) return; // future day — skip
+            if (wData[dateStr]) {
+                weekTotal += wData[dateStr].totalScore ?? 0;
+            } else {
+                weekTotal += -40; // NR penalty
+            }
+            weekDayCount++;
+        });
 
         labels.push(`Wk ${weekStart.getDate()}/${weekStart.getMonth() + 1}`);
         scores.push(weekDayCount > 0 ? weekTotal : null);
@@ -950,17 +1213,18 @@ async function generateWeeklyCharts() {
         if (wi === weeks.length - 1) {
             latestWeekTotal = weekTotal;
             latestWeekDays = weekDayCount;
+            const NR_SC = { sleep:-5, wakeup:-5, morningProgram:-5, chanting:-5, reading:-5, hearing:-5, notes:-5, daySleep:0 };
             weekDates.forEach(d => {
-                if (wData[d]) {
-                    _currentActivityTotals['Sleep']          += wData[d]?.scores?.sleep || 0;
-                    _currentActivityTotals['Wake-up']        += wData[d]?.scores?.wakeup || 0;
-                    _currentActivityTotals['Morning Prog.']  += wData[d]?.scores?.morningProgram || 0;
-                    _currentActivityTotals['Chanting']       += wData[d]?.scores?.chanting || 0;
-                    _currentActivityTotals['Reading']        += wData[d]?.scores?.reading || 0;
-                    _currentActivityTotals['Hearing']        += wData[d]?.scores?.hearing || 0;
-                    _currentActivityTotals['Notes Rev.']     += wData[d]?.scores?.notes || 0;
-                    _currentActivityTotals['Day Sleep']      += wData[d]?.scores?.daySleep || 0;
-                }
+                if (d > todayStr2) return;
+                const src = wData[d] ? wData[d].scores : NR_SC;
+                _currentActivityTotals['Sleep']          += src?.sleep ?? 0;
+                _currentActivityTotals['Wake-up']        += src?.wakeup ?? 0;
+                _currentActivityTotals['Morning Prog.']  += src?.morningProgram ?? 0;
+                _currentActivityTotals['Chanting']       += src?.chanting ?? 0;
+                _currentActivityTotals['Reading']        += src?.reading ?? 0;
+                _currentActivityTotals['Hearing']        += src?.hearing ?? 0;
+                _currentActivityTotals['Notes Rev.']     += src?.notes ?? 0;
+                _currentActivityTotals['Day Sleep']      += src?.daySleep ?? 0;
             });
         }
     }
@@ -992,18 +1256,18 @@ async function generateMonthlyCharts() {
 
         const snapshot = await db.collection('users').doc(currentUser.uid)
             .collection('sadhana')
-            .where(firebase.firestore.FieldPath.documentId(), '>=', startDate.toISOString().split('T')[0])
-            .where(firebase.firestore.FieldPath.documentId(), '<=', endDate.toISOString().split('T')[0])
+            .where(firebase.firestore.FieldPath.documentId(), '>=', toLocalDateStr(startDate))
+            .where(firebase.firestore.FieldPath.documentId(), '<=', toLocalDateStr(endDate))
             .get();
 
         let monthTotal = 0, monthDays = 0;
-        snapshot.forEach(doc => { monthTotal += doc.data().totalScore || 0; monthDays++; });
-        labels.push(month.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }));
+        snapshot.forEach(doc => { monthTotal += doc.data().totalScore ?? 0; monthDays++; });
+        labels.push((() => { const _M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return _M[month.getMonth()]+' '+String(month.getFullYear()).slice(2); })());
         scores.push(monthDays > 0 ? monthTotal : null);
     }
 
     document.getElementById('score-ring-container').style.display = 'none';
-    renderScoreLineChart(labels, scores, 'line');
+    renderScoreLineChart(labels, scores);
     // Hide activity chart for monthly
     const actSection = document.getElementById('activity-chart-section');
     if (actSection) actSection.style.display = 'none';
@@ -1058,6 +1322,15 @@ function renderScoreLineChart(labels, scores) {
     if (actSection) actSection.style.display = 'block';
 
     const scoreCtx = document.getElementById('score-chart').getContext('2d');
+
+    // Determine if we have any real data
+    const realScores = scores.filter(s => s !== null);
+    const hasData = realScores.length > 0;
+
+    // Y-axis range: always show full meaningful range regardless of data
+    const yMin = hasData ? Math.min(-40, Math.min(...realScores) - 10) : -40;
+    const yMax = hasData ? Math.max(175, Math.max(...realScores) + 10) : 175;
+
     const pointColors = scores.map(s => {
         if (s === null) return 'rgba(200,200,200,0.5)';
         const pct = s / 175 * 100;
@@ -1094,13 +1367,32 @@ function renderScoreLineChart(labels, scores) {
             },
             scales: {
                 y: {
-                    beginAtZero: false,
-                    grid: { color: 'rgba(0,0,0,0.06)' }
+                    min: yMin,
+                    max: yMax,
+                    grid: { color: 'rgba(0,0,0,0.06)' },
+                    ticks: {
+                        callback: v => v
+                    }
                 },
                 x: { grid: { display: false } }
             }
         }
     });
+
+    // If no data, show a message overlay
+    if (!hasData) {
+        const canvas = document.getElementById('score-chart');
+        const ctx2 = canvas.getContext('2d');
+        // Draw after chart renders
+        setTimeout(() => {
+            ctx2.save();
+            ctx2.fillStyle = 'rgba(150,150,150,0.7)';
+            ctx2.font = '14px Segoe UI';
+            ctx2.textAlign = 'center';
+            ctx2.fillText('No data yet — submit your first Sadhana entry!', canvas.width / 2, canvas.height / 2);
+            ctx2.restore();
+        }, 100);
+    }
 }
 
 // Activity filter update (called by checkboxes)
@@ -1159,129 +1451,64 @@ function renderActivityBarChart(activityTotals) {
 }
 
 // ══════════════════════════════════════════════
-// --- TAPAH MODULE ---
+// --- TAPAH FLASHCARD MODULE ---
 // ══════════════════════════════════════════════
 
 const ANUKUL_QUESTIONS = [
-    { id: 'channelWork',    label: 'Did I work on Channel work?',                    target: '30 min'  },
-    { id: 'lectureSewa',    label: 'Did I do Lecture Preparation & Lecture Sewa?',   target: '40 min'  },
-    { id: 'shlokRecite',    label: 'Did I do One Shlok Recitation with meaning?',    target: '20 min'  },
-    { id: 'healthChart',    label: 'Did I work on Health Chart?',                    target: '20 min'  },
-    { id: 'dataValidation', label: 'Did I work on Data Validation Preaching?',       target: '30 min'  },
+    { id: 'channelWork',    label: 'Did I work on Channel work?',                    target: '30 min', note: null },
+    { id: 'lectureSewa',    label: 'Did I do Lecture Preparation & Lecture Sewa?',   target: '40 min', note: null },
+    { id: 'shlokRecite',    label: 'Did I do One Shlok Recitation with meaning?',    target: '20 min', note: null },
+    { id: 'healthChart',    label: 'Did I work on Health Chart?',                    target: '20 min', note: null },
+    { id: 'dataValidation', label: 'Did I work on Data Validation Preaching?',       target: '30 min', note: null },
 ];
-
 const PRATIKUL_QUESTIONS = [
-    { id: 'personalProgram',  label: 'Did I do Personal Program?',                   note: 'Positive if done'   },
-    { id: 'socialMedia',      label: 'Did I spend time on Social Media & Videos?',   note: 'Negative activity'  },
-    { id: 'outsideFood',      label: 'Did I eat Outside Food?',                      note: 'Negative activity'  },
-    { id: 'withoutBhoga',     label: 'Did I eat Without Bhoga Food?',                note: 'Negative activity'  },
-    { id: 'withoutMantra',    label: 'Did I eat food without Mantra?',               note: 'Negative activity'  },
+    { id: 'personalProgram',  label: 'Did I do Personal Program?',                 target: null, note: 'Positive if done'  },
+    { id: 'socialMedia',      label: 'Did I spend time on Social Media & Videos?', target: null, note: 'Negative activity' },
+    { id: 'outsideFood',      label: 'Did I eat Outside Food?',                    target: null, note: 'Negative activity' },
+    { id: 'withoutBhoga',     label: 'Did I eat Without Bhoga Food?',              target: null, note: 'Negative activity' },
+    { id: 'withoutMantra',    label: 'Did I eat food without Mantra?',             target: null, note: 'Negative activity' },
 ];
 
-// Scoring rules
-// Anukul:   Yes=5, Partial=2, No=0
-// Pratikul: Yes=-5, Partial=2, No=5  (No = didn't do bad thing = good)
 function getAanukulScore(val) { return val === 'yes' ? 5 : val === 'partial' ? 2 : 0; }
 function getPratikulScore(val) { return val === 'yes' ? -5 : val === 'partial' ? 2 : 5; }
 
 let tapahEditingDate = null;
-
-// Render Yes/Partial/No toggle cards for a question list
-function renderTapahQuestions(containerId, questions, type) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-    container.innerHTML = '';
-
-    questions.forEach((q, idx) => {
-        const isAnukul = type === 'anukul';
-        const div = document.createElement('div');
-        div.style.cssText = 'margin-bottom:14px;padding:14px;background:#fafafa;border-radius:10px;border:1px solid #eee;';
-        div.innerHTML = `
-            <div style="margin-bottom:10px;">
-                <span style="font-weight:600;font-size:14px;color:#2c3e50;">${idx + 1}. ${q.label}</span>
-                ${q.target ? `<span style="font-size:11px;color:#888;margin-left:6px;">⏱ ${q.target}</span>` : ''}
-                ${q.note   ? `<span style="font-size:11px;color:#aaa;margin-left:6px;">(${q.note})</span>` : ''}
-            </div>
-            <div style="display:flex;gap:8px;" data-qid="${q.id}" data-type="${type}">
-                <button type="button"
-                    onclick="selectTapahOption(this, '${q.id}', 'yes', '${type}')"
-                    data-val="yes"
-                    style="flex:1;padding:9px 4px;border-radius:8px;border:2px solid #ddd;background:#f8f9fa;color:#555;font-weight:600;width:auto;margin:0;font-size:13px;cursor:pointer;transition:all 0.15s;">
-                    ✅ Yes
-                </button>
-                <button type="button"
-                    onclick="selectTapahOption(this, '${q.id}', 'partial', '${type}')"
-                    data-val="partial"
-                    style="flex:1;padding:9px 4px;border-radius:8px;border:2px solid #ddd;background:#f8f9fa;color:#555;font-weight:600;width:auto;margin:0;font-size:13px;cursor:pointer;transition:all 0.15s;">
-                    🔶 Partial
-                </button>
-                <button type="button"
-                    onclick="selectTapahOption(this, '${q.id}', 'no', '${type}')"
-                    data-val="no"
-                    style="flex:1;padding:9px 4px;border-radius:8px;border:2px solid #ddd;background:#f8f9fa;color:#555;font-weight:600;width:auto;margin:0;font-size:13px;cursor:pointer;transition:all 0.15s;">
-                    ❌ No
-                </button>
-            </div>
-            <div id="tapah-score-preview-${q.id}" style="text-align:right;font-size:12px;color:#aaa;margin-top:5px;">Not answered</div>
-        `;
-        container.appendChild(div);
-    });
-}
-
-// Better: track answers in a plain object
 let _tapahAnswers = {};
 
-window.selectTapahOption = (btn, qid, val, type) => {
-    const group = btn.closest('[data-qid]');
-    group.querySelectorAll('button').forEach(b => {
-        b.style.border = '2px solid #ddd';
-        b.style.background = '#f8f9fa';
-        b.style.color = '#555';
-    });
-    const isAnukul = type === 'anukul';
-    let color, bg;
-    if (val === 'yes')     { color = isAnukul ? '#27ae60' : '#e74c3c'; bg = isAnukul ? '#e8f8f0' : '#fde8e8'; }
-    if (val === 'partial') { color = '#f39c12'; bg = '#fff8e8'; }
-    if (val === 'no')      { color = isAnukul ? '#e74c3c' : '#27ae60'; bg = isAnukul ? '#fde8e8' : '#e8f8f0'; }
-    btn.style.border = `2px solid ${color}`;
-    btn.style.background = bg;
-    btn.style.color = color;
+// Flat list of all questions with section tag
+const ALL_TAPAH_QUESTIONS = [
+    ...ANUKUL_QUESTIONS.map(q => ({ ...q, section: 'anukul' })),
+    ...PRATIKUL_QUESTIONS.map(q => ({ ...q, section: 'pratikul' })),
+];
 
-    _tapahAnswers[qid] = { val, type };
+let _flashCardIndex = 0; // current card index (0–9)
 
-    const score = isAnukul ? getAanukulScore(val) : getPratikulScore(val);
-    const preview = document.getElementById(`tapah-score-preview-${qid}`);
-    if (preview) {
-        preview.textContent = `Score: ${score >= 0 ? '+' : ''}${score}`;
-        preview.style.color = score > 0 ? '#27ae60' : score < 0 ? '#e74c3c' : '#888';
+function resetTapahForm() {
+    _tapahAnswers = {};
+    _flashCardIndex = 0;
+    _tapahAnswering = false; // clear any pending debounce on reset
+    setupTapahDateSelect();
+    const sel = document.getElementById('tapah-date');
+    if (sel) sel.disabled = false;
+    const banner = document.getElementById('tapah-edit-banner');
+    if (banner) banner.style.display = 'none';
+    tapahEditingDate = null;
+    const submitBtn = document.getElementById('tapah-submit-btn');
+    if (submitBtn) submitBtn.style.display = 'none';
+    const doneScreen = document.getElementById('tapah-done-screen');
+    if (doneScreen) doneScreen.style.display = 'none';
+    const card = document.getElementById('tapah-card');
+    if (card) {
+        card.style.display = 'block';
+        card.style.opacity = '1';
+        card.style.transform = 'none';
+        card.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
     }
-
+    renderFlashCard(0);
     updateTapahTotals();
-};
-
-function updateTapahTotals() {
-    let anukulTotal = 0, pratikulTotal = 0;
-    ANUKUL_QUESTIONS.forEach(q => {
-        const ans = _tapahAnswers[q.id];
-        if (ans) anukulTotal += getAanukulScore(ans.val);
-    });
-    PRATIKUL_QUESTIONS.forEach(q => {
-        const ans = _tapahAnswers[q.id];
-        if (ans) pratikulTotal += getPratikulScore(ans.val);
-    });
-    const total = anukulTotal + pratikulTotal;
-    const percent = Math.round((total / 50) * 100);
-
-    const ad = document.getElementById('anukul-score-display');
-    const pd = document.getElementById('pratikul-score-display');
-    const td = document.getElementById('tapah-total-display');
-    const pp = document.getElementById('tapah-percent-display');
-
-    if (ad) { ad.textContent = `${anukulTotal} / 25`; ad.style.color = anukulTotal >= 15 ? '#27ae60' : anukulTotal >= 8 ? '#f39c12' : '#e74c3c'; }
-    if (pd) { pd.textContent = `${pratikulTotal} / 25`; pd.style.color = pratikulTotal >= 15 ? '#27ae60' : pratikulTotal >= 5 ? '#f39c12' : '#e74c3c'; }
-    if (td) { td.textContent = `${total} / 50`; td.style.color = total >= 35 ? '#27ae60' : total >= 20 ? '#f39c12' : '#e74c3c'; }
-    if (pp) { pp.textContent = `${percent}%`; }
 }
+
+window.cancelTapahEdit = () => resetTapahForm();
 
 function setupTapahDateSelect() {
     const s = document.getElementById('tapah-date');
@@ -1290,7 +1517,7 @@ function setupTapahDateSelect() {
     for (let i = 0; i < 5; i++) {
         const d = new Date();
         d.setDate(d.getDate() - i);
-        const iso = d.toISOString().split('T')[0];
+        const iso = toLocalDateStr(d);
         const opt = document.createElement('option');
         opt.value = iso;
         opt.textContent = i === 0 ? `Today (${iso})` : i === 1 ? `Yesterday (${iso})` : iso;
@@ -1298,42 +1525,193 @@ function setupTapahDateSelect() {
     }
 }
 
-function resetTapahForm() {
-    _tapahAnswers = {};
-    renderTapahQuestions('anukul-questions', ANUKUL_QUESTIONS, 'anukul');
-    renderTapahQuestions('pratikul-questions', PRATIKUL_QUESTIONS, 'pratikul');
-    updateTapahTotals();
-    setupTapahDateSelect();
-    const sel = document.getElementById('tapah-date');
-    if (sel) sel.disabled = false;
-    const btn = document.getElementById('tapah-submit-btn');
-    if (btn) btn.textContent = '🔥 Submit Tapah';
-    const banner = document.getElementById('tapah-edit-banner');
-    if (banner) banner.style.display = 'none';
-    tapahEditingDate = null;
+function renderFlashCard(idx) {
+    const total = ALL_TAPAH_QUESTIONS.length;
+    const q = ALL_TAPAH_QUESTIONS[idx];
+    if (!q) return;
+
+    // If key elements aren't in the DOM yet, bail silently
+    const counter = document.getElementById('tapah-card-counter');
+    if (!counter) return;
+
+    const isAnukul = q.section === 'anukul';
+    const badge = document.getElementById('tapah-section-badge');
+    const questionEl = document.getElementById('tapah-card-question');
+    const metaEl = document.getElementById('tapah-card-meta');
+    const scoringEl = document.getElementById('tapah-card-scoring');
+    const progressBar = document.getElementById('tapah-progress-bar');
+    const flash = document.getElementById('tapah-score-flash');
+
+    if (counter) counter.textContent = `Q ${idx + 1} / ${total}`;
+    if (badge) {
+        badge.textContent = isAnukul ? '🌿 Anukulasya' : '🚫 Pratikulasya';
+        badge.style.background = isAnukul ? '#e8f8f0' : '#fde8e8';
+        badge.style.color = isAnukul ? '#27ae60' : '#e74c3c';
+    }
+    if (questionEl) questionEl.textContent = q.label;
+    if (metaEl) {
+        const parts = [];
+        if (q.target) parts.push(`⏱ ${q.target}`);
+        if (q.note) parts.push(`(${q.note})`);
+        metaEl.textContent = parts.join('  ');
+    }
+    if (scoringEl) {
+        scoringEl.innerHTML = isAnukul
+            ? '<strong style="color:#27ae60;">Yes +5</strong> &nbsp;|&nbsp; <strong style="color:#f39c12;">Partial +2</strong> &nbsp;|&nbsp; <strong style="color:#e74c3c;">No 0</strong>'
+            : '<strong style="color:#e74c3c;">Yes −5</strong> &nbsp;|&nbsp; <strong style="color:#f39c12;">Partial +2</strong> &nbsp;|&nbsp; <strong style="color:#27ae60;">No +5</strong>';
+    }
+    if (progressBar) progressBar.style.width = `${(idx / total) * 100}%`;
+    if (flash) { flash.textContent = ''; flash.style.opacity = '0'; }
+
+    // Restore button state if already answered
+    ['yes','partial','no'].forEach(v => {
+        const btn = document.getElementById(`tapah-btn-${v}`);
+        if (!btn) return;
+        btn.style.border = '2px solid #ddd';
+        btn.style.background = '#f8f9fa';
+        btn.style.color = '#555';
+    });
+    const existing = _tapahAnswers[q.id];
+    if (existing) highlightBtn(existing.val, isAnukul, false);
 }
 
-window.cancelTapahEdit = () => resetTapahForm();
+function highlightBtn(val, isAnukul, flash = true) {
+    ['yes','partial','no'].forEach(v => {
+        const btn = document.getElementById(`tapah-btn-${v}`);
+        if (!btn) return;
+        btn.style.border = '2px solid #ddd';
+        btn.style.background = '#f8f9fa';
+        btn.style.color = '#555';
+    });
+    let color, bg;
+    if (val === 'yes')     { color = isAnukul ? '#27ae60' : '#e74c3c'; bg = isAnukul ? '#e8f8f0' : '#fde8e8'; }
+    if (val === 'partial') { color = '#f39c12'; bg = '#fff8e8'; }
+    if (val === 'no')      { color = isAnukul ? '#e74c3c' : '#27ae60'; bg = isAnukul ? '#fde8e8' : '#e8f8f0'; }
+    const btn = document.getElementById(`tapah-btn-${val}`);
+    if (btn) { btn.style.border = `2px solid ${color}`; btn.style.background = bg; btn.style.color = color; }
+}
 
-// Restore button states from saved answers
+let _tapahAnswering = false; // debounce: prevents double-fire on mobile touch
+window.tapahFlashAnswer = (val) => {
+    if (_tapahAnswering) return; // block rapid/double tap
+    _tapahAnswering = true;
+    setTimeout(() => { _tapahAnswering = false; }, 700); // unlock after advance
+
+    const q = ALL_TAPAH_QUESTIONS[_flashCardIndex];
+    if (!q) return;
+    const isAnukul = q.section === 'anukul';
+    _tapahAnswers[q.id] = { val, type: q.section };
+
+    const score = isAnukul ? getAanukulScore(val) : getPratikulScore(val);
+    highlightBtn(val, isAnukul, true);
+
+    // Flash score feedback
+    const flash = document.getElementById('tapah-score-flash');
+    if (flash) {
+        flash.textContent = `${score >= 0 ? '+' : ''}${score} pts`;
+        flash.style.color = score > 0 ? '#27ae60' : score < 0 ? '#e74c3c' : '#888';
+        flash.style.opacity = '1';
+    }
+
+    updateTapahTotals();
+
+    // Auto-advance after 600ms
+    setTimeout(() => {
+        const next = _flashCardIndex + 1;
+        if (next < ALL_TAPAH_QUESTIONS.length) {
+            const card = document.getElementById('tapah-card');
+            // Fade out
+            if (card) { card.style.opacity = '0'; card.style.transform = 'translateX(-20px)'; }
+            setTimeout(() => {
+                _flashCardIndex = next;
+                renderFlashCard(next);
+                // Reset position instantly (no transition) then fade in
+                if (card) {
+                    card.style.transition = 'none';
+                    card.style.transform = 'translateX(20px)';
+                    card.style.opacity = '0';
+                    // Use setTimeout(0) instead of rAF — more reliable on mobile
+                    setTimeout(() => {
+                        card.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
+                        card.style.opacity = '1';
+                        card.style.transform = 'translateX(0)';
+                    }, 20);
+                }
+            }, 220);
+        } else {
+            showTapahDoneScreen();
+        }
+    }, 600);
+};
+
+function showTapahDoneScreen() {
+    const card = document.getElementById('tapah-card');
+    const done = document.getElementById('tapah-done-screen');
+    const submitBtn = document.getElementById('tapah-submit-btn');
+    const bar = document.getElementById('tapah-progress-bar');
+
+    if (card) card.style.display = 'none';
+    if (bar) bar.style.width = '100%';
+
+    let anukulTotal = 0, pratikulTotal = 0;
+    ANUKUL_QUESTIONS.forEach(q => { const a = _tapahAnswers[q.id]; if (a) anukulTotal += getAanukulScore(a.val); });
+    PRATIKUL_QUESTIONS.forEach(q => { const a = _tapahAnswers[q.id]; if (a) pratikulTotal += getPratikulScore(a.val); });
+    const total = anukulTotal + pratikulTotal;
+    const pct = Math.round((total / 50) * 100);
+    const color = total >= 35 ? '#27ae60' : total >= 20 ? '#f39c12' : '#e74c3c';
+
+    const doneScore = document.getElementById('tapah-done-score');
+    const donePct = document.getElementById('tapah-done-pct');
+    if (doneScore) { doneScore.textContent = `${total} / 50`; doneScore.style.color = color; }
+    if (donePct)   donePct.textContent = `${pct}%`;
+
+    if (done) done.style.display = 'block';
+    if (submitBtn) submitBtn.style.display = 'block';
+}
+
+window.tapahFlashReview = () => {
+    _tapahAnswering = false; // reset debounce when going back to review
+    // Go back to first unanswered or first card
+    const firstUnanswered = ALL_TAPAH_QUESTIONS.findIndex(q => !_tapahAnswers[q.id]);
+    _flashCardIndex = firstUnanswered >= 0 ? firstUnanswered : 0;
+    const card = document.getElementById('tapah-card');
+    const done = document.getElementById('tapah-done-screen');
+    const submitBtn = document.getElementById('tapah-submit-btn');
+    if (card) { card.style.display = 'block'; card.style.opacity = '1'; card.style.transform = 'none'; }
+    if (done) done.style.display = 'none';
+    if (submitBtn) submitBtn.style.display = 'none';
+    renderFlashCard(_flashCardIndex);
+};
+
+function updateTapahTotals() {
+    let anukulTotal = 0, pratikulTotal = 0;
+    ANUKUL_QUESTIONS.forEach(q => { const a = _tapahAnswers[q.id]; if (a) anukulTotal += getAanukulScore(a.val); });
+    PRATIKUL_QUESTIONS.forEach(q => { const a = _tapahAnswers[q.id]; if (a) pratikulTotal += getPratikulScore(a.val); });
+    const total = anukulTotal + pratikulTotal;
+    const percent = Math.round((total / 50) * 100);
+    const ad = document.getElementById('anukul-score-display');
+    const pd = document.getElementById('pratikul-score-display');
+    const td = document.getElementById('tapah-total-display');
+    const pp = document.getElementById('tapah-percent-display');
+    if (ad) { ad.textContent = `${anukulTotal}/25`; ad.style.color = anukulTotal >= 15 ? '#27ae60' : anukulTotal >= 8 ? '#f39c12' : '#e74c3c'; }
+    if (pd) { pd.textContent = `${pratikulTotal}/25`; pd.style.color = pratikulTotal >= 15 ? '#27ae60' : pratikulTotal >= 5 ? '#f39c12' : '#e74c3c'; }
+    if (td) { td.textContent = `${total}/50`; td.style.color = total >= 35 ? '#27ae60' : total >= 20 ? '#f39c12' : '#e74c3c'; }
+    if (pp) pp.textContent = `${percent}%`;
+}
+
+// Restore button states when editing past entry
 function restoreTapahButtons(anukulAnswers, pratikulAnswers) {
-    const restore = (questions, answersObj, type) => {
-        questions.forEach(q => {
-            const val = answersObj[q.id];
-            if (!val || val === 'nr') return;
-            const group = document.querySelector(`[data-qid="${q.id}"]`);
-            if (!group) return;
-            const btn = [...group.querySelectorAll('button')].find(b => b.dataset.val === val);
-            if (btn) window.selectTapahOption(btn, q.id, val, type);
-        });
-    };
-    restore(ANUKUL_QUESTIONS, anukulAnswers, 'anukul');
-    restore(PRATIKUL_QUESTIONS, pratikulAnswers, 'pratikul');
+    ALL_TAPAH_QUESTIONS.forEach(q => {
+        const src = q.section === 'anukul' ? anukulAnswers : pratikulAnswers;
+        const val = src[q.id];
+        if (val && val !== 'nr') _tapahAnswers[q.id] = { val, type: q.section };
+    });
+    updateTapahTotals();
+    renderFlashCard(_flashCardIndex);
 }
 
 // Edit a past Tapah entry
 window.editTapahEntry = async (dateStr) => {
-    // Switch to tapah tab
     document.querySelectorAll('.tab-content').forEach(el => { el.classList.remove('active'); el.classList.add('hidden'); });
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     const tab = document.getElementById('tapah-tab');
@@ -1349,7 +1727,6 @@ window.editTapahEntry = async (dateStr) => {
         restoreTapahButtons(d.anukul || {}, d.pratikul || {});
     }
 
-    // Lock date
     const sel = document.getElementById('tapah-date');
     let found = false;
     if (sel) {
@@ -1368,78 +1745,253 @@ window.editTapahEntry = async (dateStr) => {
     const bannerText = document.getElementById('tapah-edit-banner-text');
     if (banner) banner.style.display = 'flex';
     if (bannerText) bannerText.textContent = `Editing Tapah: ${dateStr}`;
-    document.getElementById('tapah-submit-btn').textContent = '💾 Update Tapah';
+    const editSubmitBtn = document.getElementById('tapah-submit-btn');
+    if (editSubmitBtn) { editSubmitBtn.style.display = 'none'; editSubmitBtn.textContent = '💾 Update Tapah'; }
     window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
-// Tapah form submit
-const tapahForm = document.getElementById('tapah-form');
-if (tapahForm) {
-    tapahForm.onsubmit = async (e) => {
-        e.preventDefault();
-        if (!currentUser) { alert('Please login first'); return; }
+// Submit tapah (called by the Submit button shown on done screen)
+window.submitTapahFromFlash = async () => {
+    if (!currentUser) { alert('Please login first'); return; }
+    const date = document.getElementById('tapah-date')?.value;
+    if (!date) { alert('Please select a date.'); return; }
 
-        const date = document.getElementById('tapah-date').value;
+    const unanswered = ALL_TAPAH_QUESTIONS.filter(q => !_tapahAnswers[q.id]);
+    if (unanswered.length > 0) {
+        const go = confirm(`${unanswered.length} question(s) unanswered. Review before submitting?`);
+        if (go) { window.tapahFlashReview(); return; }
+    }
 
-        // Validate all answered
-        const allQids = [...ANUKUL_QUESTIONS, ...PRATIKUL_QUESTIONS].map(q => q.id);
-        const unanswered = allQids.filter(id => !_tapahAnswers[id]);
-        if (unanswered.length > 0) {
-            alert(`Please answer all questions before submitting. (${unanswered.length} unanswered)`);
-            return;
-        }
+    const anukulScores = {}, pratikulScores = {}, anukulAnswers = {}, pratikulAnswers = {};
+    let anukulTotal = 0, pratikulTotal = 0;
+    ANUKUL_QUESTIONS.forEach(q => {
+        const val = _tapahAnswers[q.id]?.val || 'no';
+        anukulAnswers[q.id] = val;
+        anukulScores[q.id] = getAanukulScore(val);
+        anukulTotal += anukulScores[q.id];
+    });
+    PRATIKUL_QUESTIONS.forEach(q => {
+        const val = _tapahAnswers[q.id]?.val || 'no';
+        pratikulAnswers[q.id] = val;
+        pratikulScores[q.id] = getPratikulScore(val);
+        pratikulTotal += pratikulScores[q.id];
+    });
+    const total = anukulTotal + pratikulTotal;
+    const percent = Math.round((total / 50) * 100);
 
-        // Build scores
-        const anukulScores = {}, pratikulScores = {}, anukulAnswers = {}, pratikulAnswers = {};
-        let anukulTotal = 0, pratikulTotal = 0;
-
-        ANUKUL_QUESTIONS.forEach(q => {
-            const val = _tapahAnswers[q.id]?.val || 'no';
-            anukulAnswers[q.id] = val;
-            anukulScores[q.id] = getAanukulScore(val);
-            anukulTotal += anukulScores[q.id];
+    try {
+        await db.collection('users').doc(currentUser.uid).collection('tapah').doc(date).set({
+            anukul: anukulAnswers, pratikul: pratikulAnswers,
+            anukulScores, pratikulScores, anukulTotal, pratikulTotal,
+            totalScore: total, percent,
+            submittedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
-        PRATIKUL_QUESTIONS.forEach(q => {
-            const val = _tapahAnswers[q.id]?.val || 'no';
-            pratikulAnswers[q.id] = val;
-            pratikulScores[q.id] = getPratikulScore(val);
-            pratikulTotal += pratikulScores[q.id];
-        });
+        const isEdit = tapahEditingDate !== null;
+        alert(`${isEdit ? 'Updated' : 'Saved'}! Tapah Score: ${total}/50 (${percent}%)`);
+        resetTapahForm();
+    } catch (err) {
+        alert('Error saving Tapah: ' + err.message);
+    }
+};
 
-        const total = anukulTotal + pratikulTotal;
-        const percent = Math.round((total / 50) * 100);
-
-        try {
-            console.log('Tapah submit — uid:', currentUser.uid, 'date:', date);
-            console.log('Writing to path: users/' + currentUser.uid + '/tapah/' + date);
-            await db.collection('users').doc(currentUser.uid).collection('tapah').doc(date).set({
-                anukul: anukulAnswers,
-                pratikul: pratikulAnswers,
-                anukulScores,
-                pratikulScores,
-                anukulTotal,
-                pratikulTotal,
-                totalScore: total,
-                percent,
-                submittedAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-
-            const isEdit = tapahEditingDate !== null;
-            alert(`${isEdit ? 'Updated' : 'Saved'}! Tapah Score: ${total}/50 (${percent}%)`);
-            resetTapahForm();
-        } catch (err) {
-            console.error('TAPAH ERROR FULL:', err);
-            console.error('Error code:', err.code);
-            console.error('Error message:', err.message);
-            alert('Error saving Tapah: ' + err.message + '\n\nCode: ' + err.code + '\n\nPath: users/' + currentUser?.uid + '/tapah/' + date);
-        }
-    };
-}
+// Legacy no-op — tapah form no longer exists as HTML form
+window.selectTapahOption = () => {};
 
 // ── END TAPAH MODULE ──
 
 // ══════════════════════════════════════════════
-// --- REPORT SWITCHER ---
+// --- ACTIVITY ANALYSIS MODAL ---
+// ══════════════════════════════════════════════
+
+window.openActivityAnalysis = () => {
+    // Remove existing modal
+    const existing = document.getElementById('activity-analysis-modal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'activity-analysis-modal';
+    modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto;';
+    modal.innerHTML = `
+        <div style="background:white;border-radius:16px;max-width:560px;width:100%;margin-top:20px;box-shadow:0 10px 40px rgba(0,0,0,0.25);overflow:hidden;">
+            <!-- Header -->
+            <div style="background:linear-gradient(135deg,#2c3e50,#3498db);padding:18px 20px;display:flex;justify-content:space-between;align-items:center;">
+                <div>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="font-size:22px;">📊</span>
+                        <strong style="color:white;font-size:17px;">Activity Analysis</strong>
+                    </div>
+                    <div id="aa-user-name" style="color:rgba(255,255,255,0.75);font-size:13px;margin-top:2px;">${userProfile?.name || ''}</div>
+                </div>
+                <button onclick="document.getElementById('activity-analysis-modal').remove()"
+                    style="width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.2);color:white;border:none;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;margin:0;flex-shrink:0;">✕</button>
+            </div>
+
+            <!-- Period toggle -->
+            <div style="display:flex;gap:0;padding:14px 16px 0;">
+                <button id="aa-btn-this" onclick="loadActivityAnalysis('this')"
+                    style="flex:1;padding:8px;border-radius:20px 0 0 20px;background:#3498db;color:white;border:1px solid #3498db;font-weight:700;font-size:13px;cursor:pointer;margin:0;">
+                    This Week
+                </button>
+                <button id="aa-btn-last" onclick="loadActivityAnalysis('last')"
+                    style="flex:1;padding:8px;border-radius:0 20px 20px 0;background:#f8f9fa;color:#666;border:1px solid #ddd;font-weight:600;font-size:13px;cursor:pointer;margin:0;">
+                    Last Week
+                </button>
+            </div>
+
+            <!-- Content -->
+            <div id="aa-content" style="padding:16px 20px 20px;">
+                <div style="text-align:center;padding:30px;color:#aaa;">Loading…</div>
+            </div>
+        </div>`;
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
+    loadActivityAnalysis('this');
+};
+
+async function loadActivityAnalysis(period) {
+    // Update button styles
+    const thisBtn = document.getElementById('aa-btn-this');
+    const lastBtn = document.getElementById('aa-btn-last');
+    if (thisBtn && lastBtn) {
+        if (period === 'this') {
+            thisBtn.style.background = '#3498db'; thisBtn.style.color = 'white'; thisBtn.style.borderColor = '#3498db';
+            lastBtn.style.background = '#f8f9fa'; lastBtn.style.color = '#666'; lastBtn.style.borderColor = '#ddd';
+        } else {
+            lastBtn.style.background = '#3498db'; lastBtn.style.color = 'white'; lastBtn.style.borderColor = '#3498db';
+            thisBtn.style.background = '#f8f9fa'; thisBtn.style.color = '#666'; thisBtn.style.borderColor = '#ddd';
+        }
+    }
+
+    const content = document.getElementById('aa-content');
+    if (!content) return;
+    content.innerHTML = '<div style="text-align:center;padding:30px;color:#aaa;">Loading…</div>';
+
+    const today = new Date();
+    const thisWeekSun = new Date(today);
+    thisWeekSun.setDate(today.getDate() - today.getDay());
+
+    const weekSun = new Date(thisWeekSun);
+    if (period === 'last') weekSun.setDate(weekSun.getDate() - 7);
+
+    const weekDates = [];
+    for (let i = 0; i < 7; i++) {
+        const d = new Date(weekSun);
+        d.setDate(weekSun.getDate() + i);
+        const ds = toLocalDateStr(d);
+        if (ds <= toLocalDateStr(today)) weekDates.push(ds);
+    }
+
+    if (weekDates.length === 0) {
+        if (content) content.innerHTML = '<div style="text-align:center;color:#aaa;padding:20px;">No dates available for this week.</div>';
+        return;
+    }
+
+    try {
+        const snap = await db.collection('users').doc(currentUser.uid)
+            .collection('sadhana')
+            .where(firebase.firestore.FieldPath.documentId(), '>=', weekDates[0])
+            .where(firebase.firestore.FieldPath.documentId(), '<=', weekDates[weekDates.length - 1])
+            .get();
+
+        const data = {};
+        snap.forEach(doc => { data[doc.id] = doc.data(); });
+
+        const filledDates = weekDates.filter(d => data[d]);
+        const totalScore = filledDates.reduce((s, d) => s + (data[d].totalScore ?? 0), 0);
+        const maxScore = weekDates.length * 175;
+        const fairMax = filledDates.length * 175;
+        const fairPct = fairMax > 0 ? Math.round(totalScore / fairMax * 100) : 0;
+
+        // Activity totals
+        const acts = {
+            Sleep:    { key: 'sleep',          max: 175, total: 0 },
+            'Wake-up':{ key: 'wakeup',         max: 175, total: 0 },
+            Chanting: { key: 'chanting',       max: 175, total: 0 },
+            Reading:  { key: 'reading',        max: 175, total: 0 },
+            Hearing:  { key: 'hearing',        max: 175, total: 0 },
+            'Morn.Prog':{ key: 'morningProgram',max:175, total: 0 },
+            'Day Sleep':{ key: 'daySleep',      max: 70,  total: 0 },
+        };
+        filledDates.forEach(d => {
+            Object.values(acts).forEach(a => {
+                a.total += data[d]?.scores?.[a.key] ?? 0;
+            });
+        });
+
+        // Date range label
+        const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        const fmt = d => `${String(d.getDate()).padStart(2,'0')} ${MONTHS[d.getMonth()]}`;
+        const weekEnd = new Date(weekSun); weekEnd.setDate(weekSun.getDate() + 6);
+        const dateRange = `${fmt(weekSun)} – ${fmt(weekEnd)}`;
+
+        // Score ring SVG
+        const color = fairPct >= 70 ? '#27ae60' : fairPct >= 50 ? '#f39c12' : '#e74c3c';
+        const ringLabel = fairPct >= 70 ? 'Good' : fairPct >= 50 ? 'OK' : 'Needs work';
+        const r = 48, circ = Math.round(2 * Math.PI * r);
+        const dash = Math.round(circ * Math.max(0, fairPct) / 100);
+
+        // Bar chart rows
+        const barRows = Object.entries(acts).map(([name, a]) => {
+            const max = filledDates.length * (a.max === 70 ? 10 : 25);
+            const pct = max > 0 ? Math.round(a.total / max * 100) : 0;
+            const barColor = a.total < 0 ? '#e74c3c' : pct >= 70 ? '#27ae60' : pct >= 40 ? '#f39c12' : '#e74c3c';
+            const barW = max > 0 ? Math.max(0, Math.min(100, (a.total / (filledDates.length * (a.max === 70 ? 10 : 25))) * 100)) : 0;
+            const displayPts = (a.total >= 0 ? '+' : '') + a.total;
+            return `
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                    <div style="width:72px;font-size:12px;color:#555;text-align:right;flex-shrink:0;">${name}</div>
+                    <div style="flex:1;background:#f0f0f0;border-radius:20px;height:18px;overflow:hidden;position:relative;">
+                        <div style="height:100%;width:${Math.max(0, Math.min(100, barW))}%;background:${barColor};border-radius:20px;transition:width 0.5s ease;"></div>
+                    </div>
+                    <div style="width:36px;font-size:12px;font-weight:700;color:${barColor};text-align:right;flex-shrink:0;">${displayPts}</div>
+                </div>`;
+        }).join('');
+
+        content.innerHTML = `
+            <!-- Date + days info -->
+            <div style="font-size:13px;color:#888;margin-bottom:14px;">${dateRange} · ${filledDates.length} day${filledDates.length !== 1 ? 's' : ''} · ${totalScore} pts</div>
+
+            <!-- Score ring -->
+            <div style="display:flex;align-items:center;gap:20px;margin-bottom:20px;flex-wrap:wrap;">
+                <div style="position:relative;width:110px;height:110px;flex-shrink:0;">
+                    <svg width="110" height="110" viewBox="0 0 120 120">
+                        <circle cx="60" cy="60" r="${r}" fill="none" stroke="#eee" stroke-width="14"/>
+                        <circle cx="60" cy="60" r="${r}" fill="none" stroke="${color}" stroke-width="14"
+                            stroke-dasharray="${dash} ${circ - dash}"
+                            stroke-linecap="round" transform="rotate(-90 60 60)"/>
+                    </svg>
+                    <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;">
+                        <div style="font-size:20px;font-weight:700;color:${color};">${fairPct}%</div>
+                        <div style="font-size:10px;color:#aaa;">week score</div>
+                    </div>
+                </div>
+                <div>
+                    <div style="font-weight:700;font-size:15px;color:#2c3e50;margin-bottom:4px;">Weekly Score %</div>
+                    <div style="font-size:12px;color:#666;margin-bottom:8px;">Total marks earned ÷ max possible for submitted days (same as WCR).</div>
+                    <div style="font-size:12px;">
+                        <span style="color:#27ae60;font-weight:700;">≥70%</span> Good &nbsp;
+                        <span style="color:#f39c12;font-weight:700;">50–69%</span> OK &nbsp;
+                        <span style="color:#e74c3c;font-weight:700;">&lt;50%</span> Needs work
+                    </div>
+                    <div style="margin-top:6px;padding:3px 10px;background:${color}18;border-left:3px solid ${color};border-radius:4px;font-size:12px;color:${color};font-weight:700;">${ringLabel}</div>
+                </div>
+            </div>
+
+            <!-- Activity breakdown -->
+            <div style="font-weight:700;color:#3498db;font-size:14px;margin-bottom:12px;">Activity Breakdown <span style="font-size:12px;color:#aaa;font-weight:400;">(total pts this week)</span></div>
+            ${filledDates.length === 0
+                ? '<div style="text-align:center;color:#aaa;padding:20px;">No data submitted for this week yet.</div>'
+                : barRows
+            }`;
+
+    } catch (err) {
+        content.innerHTML = `<div style="text-align:center;color:#e74c3c;padding:20px;">Error loading data: ${err.message}</div>`;
+    }
+}
+
+window.loadActivityAnalysis = loadActivityAnalysis;
+
+
 // ══════════════════════════════════════════════
 window.switchReport = (type) => {
     const sadPanel   = document.getElementById('sadhana-reports-panel');
@@ -1480,11 +2032,23 @@ async function loadTapahReport() {
     if (!container) return;
     container.innerHTML = '<p style="color:#aaa;text-align:center;padding:30px;">Loading Tapah data…</p>';
 
-    const snap = await db.collection('users').doc(currentUser.uid).collection('tapah').get();
-    const allData = {};
-    snap.forEach(doc => { allData[doc.id] = doc.data(); });
-    window._tapahAllData = allData;
-    renderTapahReport(allData);
+    try {
+        const snap = await db.collection('users').doc(currentUser.uid).collection('tapah').get();
+        const allData = {};
+        snap.forEach(doc => { allData[doc.id] = doc.data(); });
+        window._tapahAllData = allData;
+        renderTapahReport(allData);
+    } catch (err) {
+        container.innerHTML = `
+            <div style="text-align:center;padding:30px;background:#fff0f0;border-radius:10px;color:#e74c3c;">
+                <div style="font-size:24px;margin-bottom:8px;">⚠️</div>
+                <div style="font-weight:700;">Could not load Tapah data</div>
+                <div style="font-size:13px;color:#666;margin:6px 0 14px;">${err.message}</div>
+                <button onclick="loadTapahReport()" style="padding:8px 20px;background:#3498db;color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer;width:auto;">
+                    🔄 Retry
+                </button>
+            </div>`;
+    }
 }
 
 function renderTapahReport(allData) {
@@ -1492,12 +2056,12 @@ function renderTapahReport(allData) {
     if (!container) return;
 
     const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
+    const todayStr = toLocalDateStr(today);
 
     // Get current week Sunday
     const thisWeekSun = new Date(today);
     thisWeekSun.setDate(today.getDate() - today.getDay());
-    const thisWeekSunStr = thisWeekSun.toISOString().split('T')[0];
+    const thisWeekSunStr = toLocalDateStr(thisWeekSun);
 
     // All questions list
     const allQuestions = [
@@ -1513,7 +2077,7 @@ function renderTapahReport(allData) {
     for (let i = 0; i < 7; i++) {
         const d = new Date(thisWeekSun);
         d.setDate(thisWeekSun.getDate() + i);
-        const ds = d.toISOString().split('T')[0];
+        const ds = toLocalDateStr(d);
         if (ds <= todayStr) allDates.add(ds);
     }
 
@@ -1527,7 +2091,7 @@ function renderTapahReport(allData) {
     [...allDates].sort().forEach(dateStr => {
         const d = new Date(dateStr + 'T00:00:00');
         const sun = new Date(d); sun.setDate(d.getDate() - d.getDay());
-        const sunStr = sun.toISOString().split('T')[0];
+        const sunStr = toLocalDateStr(sun);
         if (!weekMap[sunStr]) weekMap[sunStr] = [];
         weekMap[sunStr].push(dateStr);
     });
@@ -1566,25 +2130,23 @@ function renderTapahReport(allData) {
         if (val === 'no') return 'N';
         return '–';
     };
-    const scoreLabel = (val, section) => {
-        if (!val || val === 'nr') return '–';
-        const s = section === 'anukul' ? getAanukulScore(val) : getPratikulScore(val);
-        return (s >= 0 ? '+' : '') + s;
-    };
+    // scoreLabel removed - was unused dead code
 
     // Format date label: "01 Mar"
+    const _TAPAH_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const _TAPAH_MONTHS_LONG = ['January','February','March','April','May','June','July','August','September','October','November','December'];
     const fmtDate = (ds) => {
         const d = new Date(ds + 'T00:00:00');
-        return `${String(d.getDate()).padStart(2,'0')} ${d.toLocaleString('en-GB',{month:'short'})}`;
+        return `${String(d.getDate()).padStart(2,'0')} ${_TAPAH_MONTHS[d.getMonth()]}`;
     };
     const fmtMonth = (ym) => {
         const [y, m] = ym.split('-');
-        return new Date(y, m-1, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' });
+        return `${_TAPAH_MONTHS_LONG[parseInt(m,10)-1]} ${y}`;
     };
     const fmtWeek = (sunStr) => {
         const sun = new Date(sunStr + 'T00:00:00');
         const sat = new Date(sun); sat.setDate(sun.getDate() + 6);
-        return `${fmtDate(sunStr)} – ${fmtDate(sat.toISOString().split('T')[0])}`;
+        return `${fmtDate(sunStr)} – ${fmtDate(toLocalDateStr(sat))}`;
     };
 
     // Score summary for a list of dates
@@ -1645,9 +2207,6 @@ function renderTapahReport(allData) {
             columns.push({ type: 'month', monthKey, dates: monthDates });
         }
     });
-
-    // Auto-expand current week always
-    const currentWeekDates = (weekMap[thisWeekSunStr] || []).filter(d => d <= todayStr);
 
     // Build header row
     let headerCells = '';
@@ -1825,7 +2384,7 @@ function setupDateSelect() {
     for (let i = 0; i < 5; i++) {
         const d = new Date();
         d.setDate(d.getDate() - i);
-        const iso = d.toISOString().split('T')[0];
+        const iso = toLocalDateStr(d);
         const opt = document.createElement('option');
         opt.value = iso;
         // Show human-friendly label
@@ -1839,7 +2398,7 @@ const profileForm = document.getElementById('profile-form');
 if (profileForm) {
     profileForm.onsubmit = async (e) => {
         e.preventDefault();
-        const data = { name: document.getElementById('profile-name').value.trim(), role: userProfile?.role || 'user' };
+        const data = { name: document.getElementById('profile-name').value.trim() };
         await db.collection('users').doc(currentUser.uid).set(data, { merge: true });
         alert("Name saved!");
         location.reload();
@@ -1864,14 +2423,23 @@ if (loginForm) {
             }
             await auth.signInWithEmailAndPassword(email, password);
         } catch (err) {
+            console.error('Login error:', err.code, err.message);
             let errorMsg = 'Login failed: ';
             switch (err.code) {
-                case 'auth/invalid-email': errorMsg += 'Invalid email address'; break;
-                case 'auth/user-disabled': errorMsg += 'This account has been disabled'; break;
-                case 'auth/user-not-found': errorMsg += 'No account found with this email'; break;
-                case 'auth/wrong-password': errorMsg += 'Incorrect password'; break;
-                case 'auth/invalid-credential': errorMsg += 'Invalid email or password'; break;
-                default: errorMsg += err.message;
+                case 'auth/invalid-email':        errorMsg += 'Invalid email address.'; break;
+                case 'auth/user-disabled':        errorMsg += 'This account has been disabled.'; break;
+                case 'auth/user-not-found':       errorMsg += 'No account found with this email.'; break;
+                case 'auth/wrong-password':       errorMsg += 'Incorrect password.'; break;
+                case 'auth/invalid-credential':   errorMsg += 'Invalid email or password.'; break;
+                case 'auth/operation-not-allowed':
+                    errorMsg += 'Email/Password login is not enabled in Firebase.\n\nGo to: Firebase Console → Authentication → Sign-in method → Enable Email/Password.';
+                    break;
+                case 'auth/network-request-failed':
+                    errorMsg += 'Network error. Check your internet connection.'; break;
+                case 'auth/too-many-requests':
+                    errorMsg += 'Too many failed attempts. Try again later.'; break;
+                default:
+                    errorMsg += err.message + '\n\nError code: ' + err.code;
             }
             alert(errorMsg);
         }
@@ -1894,8 +2462,76 @@ window.openProfileEdit = () => {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
+    // Load existing profile pic
+    loadProfilePic();
     showSection('profile');
 };
+
+// --- PROFILE PICTURE ---
+function loadProfilePic() {
+    const pic = userProfile?.photoBase64;
+    const img = document.getElementById('profile-pic-preview');
+    const placeholder = document.getElementById('profile-pic-placeholder');
+    if (!img || !placeholder) return;
+    if (pic) {
+        img.src = pic;
+        img.style.display = 'block';
+        placeholder.style.display = 'none';
+    } else {
+        img.style.display = 'none';
+        placeholder.style.display = 'flex';
+    }
+    // Also update dashboard avatar if exists
+    const dashAvatar = document.getElementById('dashboard-avatar');
+    if (dashAvatar && pic) { dashAvatar.src = pic; dashAvatar.style.display = 'block'; }
+}
+
+window.handleProfilePicChange = async (input) => {
+    if (!input.files || !input.files[0]) return;
+    const file = input.files[0];
+    if (file.size > 2 * 1024 * 1024) {
+        alert('Image must be under 2 MB. Please choose a smaller photo.');
+        return;
+    }
+    const hint = document.getElementById('profile-pic-hint');
+    if (hint) hint.textContent = 'Uploading…';
+
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+        const base64 = ev.target.result;
+        // Resize to max 200×200 to keep Firestore doc small
+        const resized = await resizeImage(base64, 200);
+        try {
+            await db.collection('users').doc(currentUser.uid).set(
+                { photoBase64: resized }, { merge: true }
+            );
+            userProfile.photoBase64 = resized;
+            loadProfilePic();
+            if (hint) hint.textContent = '✅ Photo updated!';
+            setTimeout(() => { if (hint) hint.textContent = 'Tap 📷 to change photo'; }, 2000);
+        } catch (err) {
+            alert('Could not save photo: ' + err.message);
+            if (hint) hint.textContent = 'Tap 📷 to change photo';
+        }
+    };
+    reader.readAsDataURL(file);
+};
+
+function resizeImage(base64, maxSize) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+            const scale = Math.min(maxSize / img.width, maxSize / img.height, 1);
+            const w = Math.round(img.width * scale);
+            const h = Math.round(img.height * scale);
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+            resolve(canvas.toDataURL('image/jpeg', 0.82));
+        };
+        img.src = base64;
+    });
+}
 
 // --- EYE BUTTON: toggle password visibility ---
 window.togglePw = (inputId, btn) => {
@@ -1909,6 +2545,105 @@ window.togglePw = (inputId, btn) => {
         input.type = 'password';
         btn.textContent = '👁️';
         btn.title = 'Show password';
+    }
+};
+
+// --- CAPS LOCK DETECTION ---
+window.checkCapsLock = (e, warningId) => {
+    const warning = document.getElementById(warningId);
+    if (!warning) return;
+    // getModifierState works on keydown/keyup
+    if (e.getModifierState) {
+        const caps = e.getModifierState('CapsLock');
+        warning.classList.toggle('show', caps);
+    }
+};
+
+// --- FORGOT PASSWORD ---
+window.showForgotPassword = () => {
+    // Pre-fill email if already typed
+    const emailVal = document.getElementById('login-email')?.value || '';
+
+    // Remove existing modal if any
+    const existing = document.getElementById('forgot-pw-modal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'forgot-pw-modal';
+    modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+    modal.innerHTML = `
+        <div style="background:white;border-radius:14px;max-width:400px;width:100%;padding:28px;box-shadow:0 10px 40px rgba(0,0,0,0.25);">
+            <div style="text-align:center;margin-bottom:18px;">
+                <div style="font-size:36px;">🔑</div>
+                <h3 style="margin:6px 0 4px;color:#2c3e50;">Reset Password</h3>
+                <p style="font-size:13px;color:#888;margin:0;">Enter your email and we'll send a reset link</p>
+            </div>
+            <input type="email" id="forgot-email" placeholder="Your email address"
+                value="${emailVal}"
+                style="width:100%;padding:12px;border:1px solid #ddd;border-radius:8px;box-sizing:border-box;font-size:14px;margin-bottom:4px;">
+            <div id="forgot-msg" style="display:none;padding:10px 14px;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:10px;"></div>
+            <button onclick="sendResetEmail()" id="forgot-send-btn"
+                style="width:100%;padding:12px;background:#3498db;color:white;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;margin-bottom:8px;">
+                📧 Send Reset Link
+            </button>
+            <button onclick="document.getElementById('forgot-pw-modal').remove()"
+                style="width:100%;padding:10px;background:#f8f9fa;color:#666;border:1px solid #ddd;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;">
+                Cancel
+            </button>
+        </div>`;
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
+    // Focus email field
+    setTimeout(() => document.getElementById('forgot-email')?.focus(), 100);
+};
+
+window.sendResetEmail = async () => {
+    const emailInput = document.getElementById('forgot-email');
+    const msgEl = document.getElementById('forgot-msg');
+    const sendBtn = document.getElementById('forgot-send-btn');
+    const email = emailInput?.value?.trim();
+
+    if (!email) {
+        msgEl.style.display = 'block';
+        msgEl.style.background = '#ffebee';
+        msgEl.style.color = '#e74c3c';
+        msgEl.textContent = 'Please enter your email address.';
+        return;
+    }
+
+    sendBtn.disabled = true;
+    sendBtn.textContent = 'Sending…';
+    msgEl.style.display = 'none';
+
+    try {
+        await auth.sendPasswordResetEmail(email);
+        msgEl.style.display = 'block';
+        msgEl.style.background = '#e8f5e9';
+        msgEl.style.color = '#27ae60';
+        msgEl.innerHTML = '✅ Reset link sent! Check your inbox (and spam folder).';
+        sendBtn.textContent = '✅ Email Sent';
+        sendBtn.style.background = '#27ae60';
+        // Auto close after 3 seconds
+        setTimeout(() => {
+            const modal = document.getElementById('forgot-pw-modal');
+            if (modal) modal.remove();
+        }, 3000);
+    } catch (err) {
+        sendBtn.disabled = false;
+        sendBtn.textContent = '📧 Send Reset Link';
+        msgEl.style.display = 'block';
+        msgEl.style.background = '#ffebee';
+        msgEl.style.color = '#e74c3c';
+        switch (err.code) {
+            case 'auth/user-not-found':
+                msgEl.textContent = 'No account found with this email.'; break;
+            case 'auth/invalid-email':
+                msgEl.textContent = 'Invalid email address.'; break;
+            case 'auth/too-many-requests':
+                msgEl.textContent = 'Too many requests. Please wait a moment.'; break;
+            default:
+                msgEl.textContent = err.message;
+        }
     }
 };
 
