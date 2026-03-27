@@ -3,295 +3,192 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAPD Sadhana Tracker</title>
+    <title>Sign Up — RAPD Sadhana Tracker</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2c3e50">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Sadhana">
+    <link rel="apple-touch-icon" href="icon-192.png">
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
-    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
-        :root { --primary: #2c3e50; --secondary: #3498db; --success: #27ae60; --danger: #e74c3c; --light: #f4f7f6; --white: #ffffff; }
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--light); margin: 0; padding: 0; }
-        .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
-        .hidden { display: none !important; }
-        .card { background: var(--white); padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        input, select, button { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; }
-        button { background: var(--secondary); color: white; border: none; cursor: pointer; font-weight: 600; transition: 0.3s; }
-        button:hover { opacity: 0.9; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 15px; background: white; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
-        .nav-tabs { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-        .tab-btn { background: #eee; color: #666; padding: 10px 20px; border-radius: 20px; width: auto; }
-        .tab-btn.active { background: var(--secondary); color: white; }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
-        .week-card { background: white; margin-bottom: 10px; border-radius: 8px; border-left: 5px solid var(--secondary); box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
-        .week-header { padding: 15px; cursor: pointer; display: flex; justify-content: space-between; font-weight: bold; }
-        .week-content { padding: 15px; border-top: 1px solid #eee; display: none; }
-        .week-content.expanded { display: block; }
-        .comparison-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        .comparison-table th, .comparison-table td { border: 1px solid #ddd; padding: 12px; text-align: center; }
-        .comparison-table th { background: var(--secondary); color: white; font-weight: 600; }
-        .comparison-table tr:hover { background: #f5f5f5; }
-        .daily-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9em; }
-        .daily-table th, .daily-table td { border: 1px solid #eee; padding: 8px; text-align: left; }
-        .daily-table th { background: #f8f9fa; font-weight: 600; }
-        .daily-table tr:hover { background: #f9f9f9; }
-        .score-positive { color: var(--success); font-weight: bold; }
-        .score-negative { color: var(--danger); font-weight: bold; }
-        .score-neutral { color: #666; }
-        .mp-toggle { transition: all 0.2s; cursor:pointer; }
-        .mp-toggle.mp-active[id="mp-done-btn"] { border-color:#27ae60!important; background:#27ae60!important; color:white!important; }
-        .mp-toggle.mp-active[id="mp-no-btn"] { border-color:#e74c3c!important; background:#e74c3c!important; color:white!important; }
-        /* Password wrapper with eye toggle */
-        .pw-wrap { position: relative; margin: 8px 0; }
-        .pw-wrap input { margin: 0; padding-right: 44px; width: 100%; }
-        .pw-eye { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: #888; font-size: 18px; width: auto; padding: 0; margin: 0; line-height: 1; }
-        .pw-eye:hover { color: #3498db; opacity: 1; }
+        :root { --primary:#2c3e50; --secondary:#3498db; --success:#27ae60; --danger:#e74c3c; --light:#f4f7f6; }
+        * { box-sizing:border-box; margin:0; padding:0; }
+        body { font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif; background:var(--light); min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
+        .card { background:white; padding:32px 28px; border-radius:14px; box-shadow:0 4px 20px rgba(0,0,0,0.1); width:100%; max-width:420px; }
+        .logo { text-align:center; margin-bottom:20px; }
+        .logo .icon { font-size:42px; }
+        h2 { margin:6px 0 4px; color:var(--primary); font-size:1.4em; }
+        .subtitle { font-size:13px; color:#888; }
+        hr { border:none; border-top:1px solid #eee; margin:18px 0; }
+        .form-group { margin-top:14px; }
+        label { display:block; font-size:13px; font-weight:600; color:#555; margin-bottom:5px; }
+        input { width:100%; padding:12px 14px; border:1.5px solid #ddd; border-radius:8px; font-size:14px; outline:none; transition:border 0.2s; }
+        input:focus { border-color:var(--secondary); }
+        .pw-wrap { position:relative; }
+        .pw-wrap input { padding-right:44px; }
+        .pw-eye { position:absolute; right:12px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; color:#999; font-size:17px; padding:0; width:auto; }
+        .pw-eye:hover { color:var(--secondary); }
+        .caps-warning { display:none; align-items:center; gap:6px; background:#fff3cd; border:1px solid #ffc107; border-radius:6px; padding:5px 10px; font-size:12px; color:#856404; font-weight:600; margin-top:5px; }
+        .caps-warning.show { display:flex; }
+        .strength-bar { height:4px; border-radius:2px; margin-top:6px; background:#eee; }
+        .strength-fill { height:100%; width:0; border-radius:2px; transition:all 0.3s; }
+        .strength-text { font-size:11px; margin-top:3px; font-weight:600; min-height:16px; }
+        .submit-btn { width:100%; margin-top:20px; padding:13px; background:var(--secondary); color:white; border:none; border-radius:8px; font-size:15px; font-weight:700; cursor:pointer; transition:0.2s; }
+        .submit-btn:hover { opacity:0.9; }
+        .submit-btn:disabled { background:#95a5a6; cursor:not-allowed; }
+        .msg { display:none; margin-top:14px; padding:12px 14px; border-radius:8px; font-size:13px; font-weight:600; text-align:center; }
+        .login-link { text-align:center; margin-top:18px; font-size:13px; color:#666; }
+        .login-link a { color:var(--secondary); font-weight:600; text-decoration:none; }
+        .login-link a:hover { text-decoration:underline; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <section id="auth-section" class="card">
-            <h2 style="text-align:center;">RAPD Sadhana Tracker</h2>
-            <form id="login-form">
-                <input type="email" id="login-email" placeholder="Email" required>
-                <div class="pw-wrap">
-                    <input type="password" id="login-password" placeholder="Password" required>
-                    <button type="button" class="pw-eye" onclick="togglePw('login-password', this)" title="Show/hide password">👁️</button>
-                </div>
-                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-top: 8px;">
-                    <input type="checkbox" id="remember-me" checked style="width: auto;">
-                    <span style="font-weight: normal;">Remember me (Trust this device)</span>
-                </label>
-                <button type="submit">Login</button>
-            </form>
-            <p style="text-align:center; margin-top:12px;">Don't have an account? <a href="signup.html" style="color:var(--secondary); font-weight:600;">Sign Up</a></p>
-        </section>
-
-        <section id="profile-section" class="card hidden">
-            <h2 id="profile-title">Set Your Name</h2>
-            <form id="profile-form">
-                <label><strong>Full Name:</strong></label>
-                <input type="text" id="profile-name" placeholder="Full Name" required>
-                <button type="submit">💾 Save Name</button>
-                <button type="button" onclick="showSection('dashboard')" id="cancel-edit" class="hidden" style="background:#95a5a6">Cancel</button>
-            </form>
-
-            <div id="change-password-section" class="hidden" style="margin-top:20px;padding-top:20px;border-top:1px solid #eee;">
-                <h3 style="margin-bottom:12px;color:var(--primary);font-size:1em;">🔒 Change Password</h3>
-                <form id="change-password-form">
-                    <label><strong>Current Password:</strong></label>
-                    <div class="pw-wrap">
-                        <input type="password" id="current-password" placeholder="Enter current password" required>
-                        <button type="button" class="pw-eye" onclick="togglePw('current-password', this)" title="Show/hide">👁️</button>
-                    </div>
-                    <label><strong>New Password:</strong></label>
-                    <div class="pw-wrap">
-                        <input type="password" id="new-password" placeholder="Enter new password (min 6 chars)" required minlength="6">
-                        <button type="button" class="pw-eye" onclick="togglePw('new-password', this)" title="Show/hide">👁️</button>
-                    </div>
-                    <label><strong>Confirm New Password:</strong></label>
-                    <div class="pw-wrap">
-                        <input type="password" id="confirm-password" placeholder="Confirm new password" required>
-                        <button type="button" class="pw-eye" onclick="togglePw('confirm-password', this)" title="Show/hide">👁️</button>
-                    </div>
-                    <button type="submit" style="background:var(--success);">🔒 Update Password</button>
-                </form>
-            </div>
-        </section>
-
-        <section id="dashboard-section" class="hidden">
-            <div class="header">
-                <div>
-                    <strong id="user-display-name"></strong>
-                    <br><button onclick="openProfileEdit()" style="width:auto; padding:2px 10px; font-size:11px; margin-top:5px; background: #95a5a6;">✏️ Edit</button>
-                </div>
-                <button id="logout-btn" style="width:auto; padding:8px 20px; background:var(--danger)">Logout</button>
-            </div>
-
-            <div class="nav-tabs">
-                <button class="tab-btn active" onclick="switchTab('sadhana')">Daily Entry</button>
-                <button class="tab-btn" onclick="switchTab('tapah')">🔥 Tapah</button>
-                <button class="tab-btn" onclick="switchTab('reports')">My Reports</button>
-                <button class="tab-btn" onclick="switchTab('charts')">Progress Charts</button>
-            </div>
-
-            <div id="sadhana-tab" class="tab-content active">
-                <!-- Edit mode banner -->
-                <div id="edit-mode-banner" style="display:none;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:10px 15px;margin-bottom:12px;align-items:center;justify-content:space-between;gap:10px;">
-                    <div style="display:flex;align-items:center;gap:8px;">
-                        <span style="font-size:18px;">✏️</span>
-                        <span style="font-weight:600;color:#856404;"></span>
-                    </div>
-                    <button onclick="cancelEdit()" style="width:auto;padding:5px 14px;background:#6c757d;font-size:13px;margin:0;border-radius:6px;">✕ Cancel Edit</button>
-                </div>
-                <div class="card">
-                    <form id="sadhana-form">
-                        <label><strong>Date:</strong></label>
-                        <select id="sadhana-date" required></select>
-
-                        <label><strong>Bed Time (Yesterday):</strong></label>
-                        <input type="time" id="sleep-time" required>
-
-                        <label><strong>Wake Up Time:</strong></label>
-                        <input type="time" id="wakeup-time" required>
-
-                        <label><strong>Morning Program:</strong></label>
-                        <div style="display:flex;gap:8px;margin:6px 0 4px;">
-                            <button type="button" id="mp-done-btn" onclick="toggleMorningProgram(false)"
-                                class="mp-toggle mp-active"
-                                style="flex:1;padding:9px;border-radius:6px;border:2px solid #27ae60;background:#27ae60;color:white;font-weight:600;width:auto;margin:0;font-size:14px;">
-                                ✅ Done
-                            </button>
-                            <button type="button" id="mp-no-btn" onclick="toggleMorningProgram(true)"
-                                class="mp-toggle"
-                                style="flex:1;padding:9px;border-radius:6px;border:2px solid #ddd;background:#f8f9fa;color:#666;font-weight:600;width:auto;margin:0;font-size:14px;">
-                                ❌ Not Done (−5)
-                            </button>
-                        </div>
-                        <div id="mp-time-row">
-                            <input type="time" id="morning-program-time">
-                            <small style="display:block;color:#666;margin-top:-4px;margin-bottom:8px;">Target: 4:45 AM for 25 marks</small>
-                        </div>
-
-                        <label><strong>Chanting (Last round by):</strong></label>
-                        <input type="time" id="chanting-time" required>
-                        <small style="display:block;color:#666;margin-top:-5px;margin-bottom:8px;">Target: Before 9:00 AM for 25 marks</small>
-
-                        <label><strong>Reading (Pathan) - Minutes:</strong></label>
-                        <input type="number" id="reading-mins" placeholder="Enter minutes" required min="0" value="0">
-
-                        <label><strong>Hearing (Shravan) - Minutes:</strong></label>
-                        <input type="number" id="hearing-mins" placeholder="Enter minutes" required min="0" value="0">
-
-                        <label><strong>Notes Revision - Minutes:</strong></label>
-                        <input type="number" id="notes-mins" placeholder="Enter minutes" required min="0" value="0">
-                        <small style="display:block;color:#666;margin-top:-5px;margin-bottom:8px;">Target: 35 mins for 25 marks | Weekly: 245 mins for full marks</small>
-
-                        <label><strong>Day Sleep (Mins):</strong></label>
-                        <input type="number" id="day-sleep-minutes" value="0" required>
-
-                        <button type="submit" id="sadhana-submit-btn" style="background:var(--success);margin-top:15px;">✅ Submit Sadhana</button>
-                    </form>
-                </div>
-            </div>
-
-            <!-- ══════════════ TAPAH TAB ══════════════ -->
-            <div id="tapah-tab" class="tab-content hidden">
-                <div id="tapah-edit-banner" style="display:none;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:10px 15px;margin-bottom:12px;align-items:center;justify-content:space-between;gap:10px;">
-                    <div style="display:flex;align-items:center;gap:8px;">
-                        <span style="font-size:18px;">✏️</span>
-                        <span id="tapah-edit-banner-text" style="font-weight:600;color:#856404;"></span>
-                    </div>
-                    <button onclick="cancelTapahEdit()" style="width:auto;padding:5px 14px;background:#6c757d;font-size:13px;margin:0;border-radius:6px;">✕ Cancel Edit</button>
-                </div>
-                <form id="tapah-form">
-                <div class="card" style="margin-bottom:16px;padding:18px 20px;">
-                    <label><strong>Date:</strong></label>
-                    <select id="tapah-date" required></select>
-                </div>
-                <div class="card" style="margin-bottom:16px;border-left:5px solid #27ae60;">
-                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
-                        <span style="font-size:22px;">🌿</span>
-                        <div>
-                            <h3 style="margin:0;color:#27ae60;font-size:1.1em;">Anukulasya — Favourable Activities</h3>
-                            <small style="color:#888;">Yes = +5 &nbsp;|&nbsp; Partial = +2 &nbsp;|&nbsp; No = 0</small>
-                        </div>
-                    </div>
-                    <div id="anukul-questions"></div>
-                    <div style="margin-top:14px;padding:10px 14px;background:#f0fff4;border-radius:8px;display:flex;justify-content:space-between;align-items:center;">
-                        <span style="font-weight:600;color:#27ae60;font-size:13px;">Anukulasya Score</span>
-                        <span id="anukul-score-display" style="font-weight:700;font-size:1.2em;color:#27ae60;">0 / 25</span>
-                    </div>
-                </div>
-                <div class="card" style="margin-bottom:16px;border-left:5px solid #e74c3c;">
-                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
-                        <span style="font-size:22px;">🚫</span>
-                        <div>
-                            <h3 style="margin:0;color:#e74c3c;font-size:1.1em;">Pratikulasya — Unfavourable Activities</h3>
-                            <small style="color:#888;">Yes = −5 &nbsp;|&nbsp; Partial = +2 &nbsp;|&nbsp; No = +5</small>
-                        </div>
-                    </div>
-                    <div id="pratikul-questions"></div>
-                    <div style="margin-top:14px;padding:10px 14px;background:#fff5f5;border-radius:8px;display:flex;justify-content:space-between;align-items:center;">
-                        <span style="font-weight:600;color:#e74c3c;font-size:13px;">Pratikulasya Score</span>
-                        <span id="pratikul-score-display" style="font-weight:700;font-size:1.2em;color:#e74c3c;">0 / 25</span>
-                    </div>
-                </div>
-                <div class="card" style="margin-bottom:16px;background:linear-gradient(135deg,#667eea20,#764ba220);border:2px solid #764ba2;">
-                    <div style="text-align:center;padding:8px 0;">
-                        <div style="font-size:13px;color:#764ba2;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">Total Tapah Score</div>
-                        <div id="tapah-total-display" style="font-size:2em;font-weight:700;color:#764ba2;">0 / 50</div>
-                        <div id="tapah-percent-display" style="font-size:13px;color:#888;margin-top:2px;">0%</div>
-                    </div>
-                </div>
-                <button type="submit" id="tapah-submit-btn" style="background:#764ba2;margin-top:4px;margin-bottom:8px;">🔥 Submit Tapah</button>
-                </form>
-            </div>
-
-            <div id="reports-tab" class="tab-content hidden">
-                <div style="display:flex;gap:10px;margin-bottom:16px;">
-                    <button id="report-sadhana-btn" onclick="switchReport('sadhana')"
-                        style="flex:1;padding:10px;border-radius:20px;background:var(--secondary);color:white;font-weight:600;border:none;">
-                        📿 Sadhana
-                    </button>
-                    <button id="report-tapah-btn" onclick="switchReport('tapah')"
-                        style="flex:1;padding:10px;border-radius:20px;background:#eee;color:#666;font-weight:600;border:none;">
-                        🔥 Tapah
-                    </button>
-                </div>
-                <div id="sadhana-reports-panel">
-                    <button onclick="downloadUserExcel(currentUser.uid, userProfile.name)" style="background:var(--success); margin-bottom:15px">📥 Download My History (Excel)</button>
-                    <div class="card" style="margin-bottom: 20px;">
-                        <h3 style="margin-bottom: 15px; color: var(--primary);">Last 4 Weeks Comparison</h3>
-                        <div id="four-week-comparison" style="overflow-x: auto;"></div>
-                    </div>
-                    <h3 style="margin-bottom: 15px; color: var(--primary);">Detailed Weekly Reports</h3>
-                    <div id="weekly-reports-container"></div>
-                </div>
-                <div id="tapah-reports-panel" style="display:none;">
-                    <div id="tapah-report-container"></div>
-                </div>
-            </div>
-
-            <div id="charts-tab" class="tab-content hidden">
-                <div class="card">
-                    <label><strong>View Period:</strong></label>
-                    <select id="chart-period" onchange="generateCharts()" style="max-width:300px;">
-                        <option value="daily">Last 28 Days</option>
-                        <option value="weekly">Last 4 Weeks</option>
-                        <option value="monthly">Last 6 Months</option>
-                    </select>
-
-                    <!-- Weekly score ring -->
-                    <div id="score-ring-container" style="margin-top:20px;padding:16px;background:#f8f9fa;border-radius:10px;"></div>
-
-                    <!-- Score line chart -->
-                    <div style="margin-top:20px;">
-                        <h4 style="margin-bottom:10px;color:var(--primary);">Daily Performance</h4>
-                        <canvas id="score-chart"></canvas>
-                    </div>
-
-                    <!-- Activity breakdown horizontal bar with filters -->
-                    <div id="activity-chart-section" style="margin-top:24px;">
-                        <h4 style="margin-bottom:6px;color:var(--primary);">Activity Breakdown <span style="font-size:12px;font-weight:normal;color:#888;">(total pts this period)</span></h4>
-                        <div id="activity-filters" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
-                            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Sleep" onchange="updateActivityFilter()" style="width:auto;"> Sleep</label>
-                            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Wake-up" onchange="updateActivityFilter()" style="width:auto;"> Wake-up</label>
-                            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Morning Prog." onchange="updateActivityFilter()" style="width:auto;"> MP</label>
-                            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Chanting" onchange="updateActivityFilter()" style="width:auto;"> Chanting</label>
-                            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Reading" onchange="updateActivityFilter()" style="width:auto;"> Reading</label>
-                            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Hearing" onchange="updateActivityFilter()" style="width:auto;"> Hearing</label>
-                            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Notes Rev." onchange="updateActivityFilter()" style="width:auto;"> Notes</label>
-                            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Day Sleep" onchange="updateActivityFilter()" style="width:auto;"> Day Sleep</label>
-                        </div>
-                        <canvas id="activity-chart"></canvas>
-                    </div>
-                </div>
-            </div>
-        </section>
+<div class="card">
+    <div class="logo">
+        <div class="icon">📿</div>
+        <h2>Create Account</h2>
+        <p class="subtitle">RAPD Sadhana Tracker</p>
     </div>
+    <hr>
+    <form id="signup-form">
+        <div class="form-group">
+            <label for="signup-name">Full Name</label>
+            <input type="text" id="signup-name" placeholder="Your devotional name" required autocomplete="name">
+        </div>
+        <div class="form-group">
+            <label for="signup-email">Email Address</label>
+            <input type="email" id="signup-email" placeholder="your@email.com" required autocomplete="email">
+        </div>
+        <div class="form-group">
+            <label for="signup-password">Password</label>
+            <div class="pw-wrap">
+                <input type="password" id="signup-password" placeholder="Min 6 characters" required minlength="6"
+                    autocomplete="new-password"
+                    onkeyup="checkCapsLock(event,'caps-signup');checkStrength(this.value)"
+                    onkeydown="checkCapsLock(event,'caps-signup')">
+                <button type="button" class="pw-eye" onclick="togglePw('signup-password',this)">👁️</button>
+            </div>
+            <div id="caps-signup" class="caps-warning">⇪ Caps Lock is ON</div>
+            <div class="strength-bar"><div class="strength-fill" id="strength-fill"></div></div>
+            <div class="strength-text" id="strength-text"></div>
+        </div>
+        <div class="form-group">
+            <label for="signup-confirm">Confirm Password</label>
+            <div class="pw-wrap">
+                <input type="password" id="signup-confirm" placeholder="Re-enter password" required autocomplete="new-password">
+                <button type="button" class="pw-eye" onclick="togglePw('signup-confirm',this)">👁️</button>
+            </div>
+        </div>
+        <button type="submit" class="submit-btn" id="signup-btn">🙏 Create Account</button>
+    </form>
+    <div class="msg" id="signup-msg"></div>
+    <p class="login-link">Already have an account? <a href="index.html">Login here</a></p>
+</div>
 
-    <script src="app.js"></script>
+<script>
+    // ── Firebase ── SAME project as app.js ───────────────────────────────
+    const firebaseConfig = {
+        apiKey: "AIzaSyDMXB0mD3fZPpCQti9Ikt-MdBjzmfBNfJs",
+        authDomain: "nimai-nitai.firebaseapp.com",
+        projectId: "nimai-nitai",
+        storageBucket: "nimai-nitai.firebasestorage.app",
+        messagingSenderId: "221744100000",
+        appId: "1:221744100000:web:24830d9a7d9a5cb4d3cfc5"
+    };
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db   = firebase.firestore();
+
+    // ── Helpers ──────────────────────────────────────────────────────────
+    function togglePw(id, btn) {
+        const inp = document.getElementById(id);
+        if (!inp) return;
+        inp.type = inp.type === 'password' ? 'text' : 'password';
+        btn.textContent = inp.type === 'password' ? '👁️' : '🙈';
+    }
+    function checkCapsLock(e, warningId) {
+        const el = document.getElementById(warningId);
+        if (!el || !e.getModifierState) return;
+        el.classList.toggle('show', e.getModifierState('CapsLock'));
+    }
+    function checkStrength(pw) {
+        const fill = document.getElementById('strength-fill');
+        const text = document.getElementById('strength-text');
+        if (!pw) { fill.style.width='0'; text.textContent=''; return; }
+        let score = 0;
+        if (pw.length >= 6)  score++;
+        if (pw.length >= 10) score++;
+        if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) score++;
+        if (/\d/.test(pw))   score++;
+        if (/[^A-Za-z0-9]/.test(pw)) score++;
+        const levels = [
+            { w:'20%', bg:'#e74c3c', label:'Very weak',  color:'#e74c3c' },
+            { w:'40%', bg:'#e67e22', label:'Weak',       color:'#e67e22' },
+            { w:'60%', bg:'#f39c12', label:'Fair',       color:'#f39c12' },
+            { w:'80%', bg:'#2ecc71', label:'Good',       color:'#2ecc71' },
+            { w:'100%',bg:'#27ae60', label:'Strong 💪',  color:'#27ae60' },
+        ];
+        const lvl = levels[Math.min(score, 5) - 1] || levels[0];
+        fill.style.width = lvl.w;
+        fill.style.background = lvl.bg;
+        text.textContent = lvl.label;
+        text.style.color = lvl.color;
+    }
+    function showMsg(txt, isSuccess) {
+        const el = document.getElementById('signup-msg');
+        el.style.display = 'block';
+        el.style.background = isSuccess ? '#e8f8f0' : '#ffebee';
+        el.style.color      = isSuccess ? '#27ae60' : '#e74c3c';
+        el.textContent = txt;
+    }
+
+    // ── Signup submit ─────────────────────────────────────────────────────
+    document.getElementById('signup-form').onsubmit = async (e) => {
+        e.preventDefault();
+        const btn     = document.getElementById('signup-btn');
+        const name    = document.getElementById('signup-name').value.trim();
+        const email   = document.getElementById('signup-email').value.trim();
+        const pw      = document.getElementById('signup-password').value;
+        const confirm = document.getElementById('signup-confirm').value;
+
+        if (!name)        { showMsg('Please enter your full name.', false); return; }
+        if (pw !== confirm){ showMsg('Passwords do not match. Please re-enter.', false); return; }
+        if (pw.length < 6){ showMsg('Password must be at least 6 characters.', false); return; }
+
+        btn.disabled = true;
+        btn.textContent = 'Creating account…';
+
+        try {
+            const cred = await auth.createUserWithEmailAndPassword(email, pw);
+            await db.collection('users').doc(cred.user.uid).set({
+                name: name,
+                role: 'user',
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            document.getElementById('signup-form').style.display = 'none';
+            showMsg('✅ Account created! Redirecting to login…', true);
+            setTimeout(() => { window.location.href = 'index.html'; }, 2000);
+        } catch (err) {
+            btn.disabled = false;
+            btn.textContent = '🙏 Create Account';
+            let msg;
+            switch (err.code) {
+                case 'auth/email-already-in-use':
+                    msg = 'An account with this email already exists. Please login instead.'; break;
+                case 'auth/invalid-email':
+                    msg = 'Invalid email address. Please check and try again.'; break;
+                case 'auth/weak-password':
+                    msg = 'Password is too weak. Please choose a stronger password.'; break;
+                case 'auth/network-request-failed':
+                    msg = 'Network error. Please check your internet connection.'; break;
+                default:
+                    msg = 'Sign up failed: ' + err.message;
+            }
+            showMsg(msg, false);
+        }
+    };
+</script>
 </body>
 </html>
