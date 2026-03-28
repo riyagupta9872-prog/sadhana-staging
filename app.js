@@ -150,7 +150,7 @@ window.downloadUserExcel = async (userId, userName) => {
         XLSX.utils.book_append_sheet(workbook, worksheet, 'Sadhna History');
         XLSX.writeFile(workbook, `${userName}_Sadhna_History.xlsx`);
     } catch (error) {
-        alert("Error downloading Excel: " + error.message);
+        alert("Could not download Excel. Please check your internet connection and try again.");
     }
 };
 
@@ -273,7 +273,7 @@ async function loadHomeScreen() {
         let totalScore = 0, daysFilled = 0, elapsedDays = 0;
         const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
         const dayDots = [];
-        const actTotals = { Sleep: 0, 'Wake-up': 0, Chanting: 0, Reading: 0, Hearing: 0, 'Notes Rev.': 0, 'Day Sleep': 0 };
+        const actTotals = { Sleep: 0, 'Wake-up': 0, 'Morning Prog.': 0, Chanting: 0, Reading: 0, Hearing: 0, 'Notes Rev.': 0, 'Day Sleep': 0 };
         const NR_SC = { sleep: -5, wakeup: -5, morningProgram: -5, chanting: -5, reading: -5, hearing: -5, notes: -5, daySleep: 0 };
 
         for (let i = 0; i < 7; i++) {
@@ -292,6 +292,7 @@ async function loadHomeScreen() {
                     const sc = weekData[ds].scores || {};
                     actTotals['Sleep'] += sc.sleep ?? 0;
                     actTotals['Wake-up'] += sc.wakeup ?? 0;
+                    actTotals['Morning Prog.'] += sc.morningProgram ?? 0;
                     actTotals['Chanting'] += sc.chanting ?? 0;
                     actTotals['Reading'] += sc.reading ?? 0;
                     actTotals['Hearing'] += sc.hearing ?? 0;
@@ -299,8 +300,8 @@ async function loadHomeScreen() {
                     actTotals['Day Sleep'] += sc.daySleep ?? 0;
                 } else {
                     totalScore += -40;
+                    const map = { sleep: 'Sleep', wakeup: 'Wake-up', morningProgram: 'Morning Prog.', chanting: 'Chanting', reading: 'Reading', hearing: 'Hearing', notes: 'Notes Rev.', daySleep: 'Day Sleep' };
                     Object.keys(NR_SC).forEach(k => {
-                        const map = { sleep: 'Sleep', wakeup: 'Wake-up', chanting: 'Chanting', reading: 'Reading', hearing: 'Hearing', notes: 'Notes Rev.', daySleep: 'Day Sleep' };
                         actTotals[map[k]] += NR_SC[k];
                     });
                 }
@@ -313,20 +314,27 @@ async function loadHomeScreen() {
         const weekPercent = fairMax > 0 ? Math.round((totalScore / fairMax) * 100) : 0;
         const todayFilled = !!weekData[todayStr];
 
-        // Calculate streak
+        // Calculate streak — fetch last 60 days to check properly
         let streak = 0;
+        const streakStart = new Date(today);
+        streakStart.setDate(today.getDate() - 59);
+        const streakSnap = await db.collection('users').doc(currentUser.uid)
+            .collection('sadhana')
+            .where(firebase.firestore.FieldPath.documentId(), '>=', toLocalDateStr(streakStart))
+            .where(firebase.firestore.FieldPath.documentId(), '<=', todayStr)
+            .get();
+        const streakData = {};
+        streakSnap.forEach(doc => { streakData[doc.id] = true; });
+
         const checkDate = new Date(today);
-        if (!todayFilled) checkDate.setDate(checkDate.getDate() - 1); // start from yesterday if today not filled
-        for (let i = 0; i < 365; i++) {
+        if (!todayFilled) checkDate.setDate(checkDate.getDate() - 1);
+        for (let i = 0; i < 60; i++) {
             const cs = toLocalDateStr(checkDate);
-            // Need to check beyond this week — quick query-free check for this week, else break
-            if (weekData[cs]) {
+            if (streakData[cs]) {
                 streak++;
                 checkDate.setDate(checkDate.getDate() - 1);
-            } else if (checkDate >= thisWeekSun) {
-                break; // NR day within this week — streak broken
             } else {
-                break; // can't check further without another query
+                break;
             }
         }
 
@@ -343,11 +351,13 @@ async function loadHomeScreen() {
             return `<div style="text-align:center;"><div style="width:32px;height:32px;border-radius:50%;background:#e74c3c;margin:0 auto;display:flex;align-items:center;justify-content:center;color:white;font-size:14px;">✗</div><div style="font-size:10px;color:#555;margin-top:3px;">${d.name}</div></div>`;
         }).join('');
 
-        // Activity bars HTML
-        const actMax = elapsedDays * 25; // max possible per activity
-        const actEmojis = { Sleep: '🛏️', 'Wake-up': '⏰', Chanting: '📿', Reading: '📖', Hearing: '🎧', 'Notes Rev.': '📝', 'Day Sleep': '😴' };
+        // Activity bars HTML — per-activity max (Day Sleep max is 10/day, rest 25/day)
+        const actMaxMap = { 'Day Sleep': elapsedDays * 10 };
+        const defaultActMax = elapsedDays * 25;
+        const actEmojis = { Sleep: '🛏️', 'Wake-up': '⏰', 'Morning Prog.': '🙏', Chanting: '📿', Reading: '📖', Hearing: '🎧', 'Notes Rev.': '📝', 'Day Sleep': '😴' };
         const actBarsHtml = Object.entries(actTotals).map(([name, val]) => {
-            const pct = actMax > 0 ? Math.max(0, Math.round((val / actMax) * 100)) : 0;
+            const thisMax = actMaxMap[name] || defaultActMax;
+            const pct = thisMax > 0 ? Math.max(0, Math.round((val / thisMax) * 100)) : 0;
             return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
                 <span style="font-size:12px;min-width:80px;text-align:right;color:#555;">${actEmojis[name] || ''} ${name}</span>
                 <div style="flex:1;background:#e8ecf1;border-radius:6px;height:10px;overflow:hidden;">
@@ -432,7 +442,12 @@ async function loadHomeScreen() {
             </div>
         `;
     } catch (err) {
-        container.innerHTML = `<div class="card" style="text-align:center;padding:30px;color:#e74c3c;">Error: ${err.message}</div>`;
+        container.innerHTML = `<div class="card" style="text-align:center;padding:30px;color:#e74c3c;">
+            <div style="font-size:28px;margin-bottom:8px;">😔</div>
+            <div style="font-weight:600;margin-bottom:6px;">Something went wrong</div>
+            <div style="font-size:13px;color:#888;">Please check your internet connection and try again.</div>
+            <button onclick="loadHomeScreen()" style="width:auto;padding:8px 20px;background:#3498db;color:white;border:none;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;margin-top:12px;">🔄 Retry</button>
+        </div>`;
     }
 }
 
@@ -707,7 +722,7 @@ if (sadhanaForm) {
             alert(`${isEdit ? 'Updated' : 'Saved'}! Score: ${total}/175 (${dayPercent}%)`);
             switchTab('reports');
         } catch (error) {
-            alert('Error saving: ' + error.message);
+            alert('Could not save your entry. Please check your internet and try again.');
         }
     };
 }
@@ -916,7 +931,7 @@ async function loadReports(userId, containerId) {
             <div style="text-align:center;padding:40px 20px;background:#fff0f0;border-radius:10px;color:#e74c3c;">
                 <div style="font-size:28px;margin-bottom:10px;">⚠️</div>
                 <div style="font-weight:700;margin-bottom:6px;">Could not load reports</div>
-                <div style="font-size:13px;color:#666;margin-bottom:16px;">${err.message}</div>
+                <div style="font-size:13px;color:#666;margin-bottom:16px;">Please check your internet connection and try again.</div>
                 <button onclick="_reportsLoading=false;loadReports('${userId}','${containerId}')"
                     style="padding:10px 24px;background:#3498db;color:white;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;width:auto;">
                     🔄 Retry
@@ -1545,8 +1560,8 @@ function renderScoreRing(percent, dateRange, days, totalPts) {
                 </div>
             </div>
             <div>
-                <div style="font-weight:700;font-size:15px;color:#2c3e50;margin-bottom:4px;">Weekly Score %</div>
-                <div style="font-size:13px;color:#555;margin-bottom:6px;">${dateRange} · ${days} day${days !== 1 ? 's' : ''} · ${totalPts} pts</div>
+                <div style="font-weight:700;font-size:15px;color:#2c3e50;margin-bottom:4px;">Score Summary</div>
+                <div style="font-size:13px;color:#555;margin-bottom:6px;">${days} day${days !== 1 ? 's' : ''} · ${totalPts} pts</div>
                 <div style="font-size:12px;">
                     <span style="color:#27ae60;font-weight:600;">≥70%</span> Good &nbsp;
                     <span style="color:#f39c12;font-weight:600;">50–69%</span> OK &nbsp;
@@ -1616,6 +1631,7 @@ function renderScoreLineChart(labels, scores) {
                     max: yMax,
                     grid: { color: 'rgba(0,0,0,0.06)' },
                     ticks: {
+                        stepSize: 20,
                         callback: v => v
                     }
                 },
@@ -1688,7 +1704,13 @@ function renderActivityBarChart(activityTotals) {
 
     const filteredKeys = Object.keys(activityTotals).filter(k => enabledActivities.has(k));
     const filteredVals = filteredKeys.map(k => activityTotals[k]);
-    const actColors = filteredVals.map(v => v >= 50 ? '#27ae60' : v >= 0 ? '#f39c12' : '#e74c3c');
+    // Calculate max possible per activity for percentage (based on chart period)
+    const period = document.getElementById('chart-period')?.value || 'daily';
+    let actMaxPerItem = 175; // daily: 28 days × 25 pts but we show raw pts, need to calc %
+    if (period === 'daily') actMaxPerItem = 28 * 25;
+    else if (period === 'weekly') actMaxPerItem = 7 * 25;
+    const filteredPcts = filteredVals.map(v => actMaxPerItem > 0 ? Math.round((v / actMaxPerItem) * 100) : 0);
+    const actColors = filteredPcts.map(p => p >= 70 ? '#27ae60' : p >= 0 ? '#f39c12' : '#e74c3c');
 
     const actCtx = document.getElementById('activity-chart').getContext('2d');
     activityChart = new Chart(actCtx, {
@@ -1696,8 +1718,8 @@ function renderActivityBarChart(activityTotals) {
         data: {
             labels: filteredKeys,
             datasets: [{
-                label: 'Total pts',
-                data: filteredVals,
+                label: '%',
+                data: filteredPcts,
                 backgroundColor: actColors,
                 borderRadius: 5,
                 borderSkipped: false,
@@ -1708,14 +1730,15 @@ function renderActivityBarChart(activityTotals) {
             responsive: true,
             plugins: {
                 legend: { display: false },
-                tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.x} pts` } }
+                tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.x}%` } },
+                datalabels: false
             },
             scales: {
                 x: {
                     beginAtZero: true,
-                    min: -175,
+                    max: 100,
                     grid: { color: 'rgba(0,0,0,0.06)' },
-                    ticks: { callback: v => v + ' pts' }
+                    ticks: { stepSize: 20, callback: v => v + '%' }
                 },
                 y: { grid: { display: false } }
             }
@@ -2063,7 +2086,7 @@ window.submitTapahFromFlash = async () => {
         alert(`${isEdit ? 'Updated' : 'Saved'}! Tapah Score: ${total}/50 (${percent}%)`);
         resetTapahForm();
     } catch (err) {
-        alert('Error saving Tapah: ' + err.message);
+        alert('Could not save Tapah. Please check your internet and try again.');
     }
 };
 
@@ -2316,7 +2339,7 @@ async function loadTapahReport() {
             <div style="text-align:center;padding:30px;background:#fff0f0;border-radius:10px;color:#e74c3c;">
                 <div style="font-size:24px;margin-bottom:8px;">⚠️</div>
                 <div style="font-weight:700;">Could not load Tapah data</div>
-                <div style="font-size:13px;color:#666;margin:6px 0 14px;">${err.message}</div>
+                <div style="font-size:13px;color:#666;margin:6px 0 14px;">Please check your internet connection and try again.</div>
                 <button onclick="loadTapahReport()" style="padding:8px 20px;background:#3498db;color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer;width:auto;">
                     🔄 Retry
                 </button>

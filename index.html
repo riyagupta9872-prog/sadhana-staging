@@ -98,11 +98,7 @@
         </section>
 
         <section id="profile-section" class="card hidden">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-                <h2 id="profile-title" style="margin:0;">Set Your Name</h2>
-                <button type="button" onclick="showSection('dashboard')" id="cancel-edit" class="hidden"
-                    style="width:auto;padding:6px 16px;background:#95a5a6;font-size:13px;margin:0;border-radius:8px;">✕ Cancel</button>
-            </div>
+            <h2 id="profile-title" style="margin:0 0 16px;">Set Your Name</h2>
             <div id="profile-pic-section" style="text-align:center;margin-bottom:20px;">
                 <div style="position:relative;display:inline-block;">
                     <img id="profile-pic-preview" src=""
@@ -140,6 +136,8 @@
                     <button type="submit" style="background:var(--success);">🔒 Update Password</button>
                 </form>
             </div>
+            <button type="button" onclick="showSection('dashboard')" id="cancel-edit" class="hidden"
+                style="background:#95a5a6;margin-top:20px;padding:14px;border-radius:10px;font-size:15px;font-weight:600;">✕ Cancel</button>
         </section>
 
         <section id="dashboard-section" class="hidden" style="padding-bottom:70px;">
@@ -340,20 +338,7 @@
                             <canvas id="score-chart"></canvas>
                             <div id="chart-max-label" style="text-align:center;color:#888;font-size:12px;margin-top:6px;">Daily max: 175 · Weekly max: 1225</div>
                         </div>
-                        <div id="activity-chart-section" style="margin-top:24px;">
-                            <h4 style="margin-bottom:6px;color:var(--primary);">Activity Breakdown <span style="font-size:12px;font-weight:normal;color:#888;">(total pts this period)</span></h4>
-                            <div id="activity-filters" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
-                                <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Sleep" onchange="updateActivityFilter()" style="width:auto;"> Sleep</label>
-                                <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Wake-up" onchange="updateActivityFilter()" style="width:auto;"> Wake-up</label>
-                                <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Morning Prog." onchange="updateActivityFilter()" style="width:auto;"> MP</label>
-                                <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Chanting" onchange="updateActivityFilter()" style="width:auto;"> Chanting</label>
-                                <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Reading" onchange="updateActivityFilter()" style="width:auto;"> Reading</label>
-                                <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Hearing" onchange="updateActivityFilter()" style="width:auto;"> Hearing</label>
-                                <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Notes Rev." onchange="updateActivityFilter()" style="width:auto;"> Notes</label>
-                                <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;"><input type="checkbox" checked data-activity="Day Sleep" onchange="updateActivityFilter()" style="width:auto;"> Day Sleep</label>
-                            </div>
-                            <canvas id="activity-chart"></canvas>
-                        </div>
+                        <!-- Activity chart removed — available in My Reports > Activity Analysis -->
                     </div>
                 </div><!-- /sadhna-progress-subtab -->
             </div><!-- /sadhna-main-tab -->
