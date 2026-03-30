@@ -154,6 +154,269 @@ window.downloadUserExcel = async (userId, userName) => {
     }
 };
 
+// --- 3B. IMPORT EXCEL LOGIC ---
+
+// Convert "11.35 pm", "4.30 am", "03:00", "22:30" etc. to 24h "HH:MM"
+function parseTimeTo24h(raw) {
+    if (!raw) return null;
+    let s = String(raw).trim().toLowerCase();
+    if (s === 'nr' || s === '' || s === 'no' || s === 'not done' || s === 'nd') return null;
+
+    // Already 24h format like "22:30" or "03:00"
+    const match24 = s.match(/^(\d{1,2}):(\d{2})$/);
+    if (match24) return String(match24[1]).padStart(2,'0') + ':' + match24[2];
+
+    // AM/PM format: "11.35 pm", "4:30 am", "03.00 pm", "7.00am"
+    const matchAMPM = s.match(/^(\d{1,2})[.:](\d{2})\s*(am|pm)$/);
+    if (matchAMPM) {
+        let h = parseInt(matchAMPM[1]);
+        const m = matchAMPM[2];
+        const ampm = matchAMPM[3];
+        if (ampm === 'pm' && h !== 12) h += 12;
+        if (ampm === 'am' && h === 12) h = 0;
+        return String(h).padStart(2,'0') + ':' + m;
+    }
+
+    // Try just "HH.MM" without am/pm (treat as 24h)
+    const matchDot = s.match(/^(\d{1,2})\.(\d{2})$/);
+    if (matchDot) return String(matchDot[1]).padStart(2,'0') + ':' + matchDot[2];
+
+    return null; // unrecognized
+}
+
+// Parse "0 min", "30 min", "7 hrs", "40 MIN", just "30", etc. to number of minutes
+function parseMinsValue(raw) {
+    if (!raw && raw !== 0) return 0;
+    let s = String(raw).trim().toLowerCase();
+    if (s === 'nr' || s === '' || s === 'no') return 0;
+
+    // "7 hrs" or "7hrs"
+    const hrsMatch = s.match(/^(\d+(?:\.\d+)?)\s*hrs?$/);
+    if (hrsMatch) return Math.round(parseFloat(hrsMatch[1]) * 60);
+
+    // "30 min" or "30min" or "40 MIN"
+    const minMatch = s.match(/^(\d+(?:\.\d+)?)\s*min$/);
+    if (minMatch) return Math.round(parseFloat(minMatch[1]));
+
+    // Plain number
+    const num = parseFloat(s);
+    return isNaN(num) ? 0 : Math.round(num);
+}
+
+window.importExcelFile = async (input) => {
+    if (!input.files || !input.files[0]) return;
+    if (!currentUser) { alert('Please login first.'); return; }
+    if (typeof XLSX === 'undefined') { alert('Excel library not loaded yet. Please wait a moment and try again.'); return; }
+
+    const file = input.files[0];
+    input.value = '';
+
+    try {
+        const data = await file.arrayBuffer();
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+        if (!rows || rows.length < 2) {
+            alert('This file appears to be empty or not in the correct format.');
+            return;
+        }
+
+        const MONTHS_MAP = { Jan:0, Feb:1, Mar:2, Apr:3, May:4, Jun:5, Jul:6, Aug:7, Sep:8, Oct:9, Nov:10, Dec:11 };
+        const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Thur','Fri','Sat'];
+        const DAY_INDEX = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Thur:4, Fri:5, Sat:6 };
+
+        // Detect format: check if header row has "Mks" columns (export format) or not (simple format)
+        let isExportFormat = false;
+        for (const row of rows) {
+            if (!row || !row[0]) continue;
+            const c0 = String(row[0]).trim();
+            if (c0 === 'Day') {
+                // Check if column 2 is "Mks"
+                isExportFormat = row[2] && String(row[2]).trim() === 'Mks';
+                break;
+            }
+        }
+
+        // Column indices based on format
+        // Simple: [Day, Bed, Wake, Japa, MP, DS, Pathan, Sarwan, Notes]
+        // Export: [Day, Bed, Mks, Wake, Mks, Japa, Mks, MP, Mks, DS, Mks, Pathan, Mks, Sarwan, Mks, Notes, Mks, Day%]
+        const COL = isExportFormat
+            ? { bed:1, wake:3, japa:5, mp:7, ds:9, read:11, hear:13, notes:15 }
+            : { bed:1, wake:2, japa:3, mp:4, ds:5, read:6, hear:7, notes:8 };
+
+        const entries = [];
+        let currentYear = new Date().getFullYear();
+        let weekStartDate = null;
+
+        for (let r = 0; r < rows.length; r++) {
+            const row = rows[r];
+            if (!row || row[0] === undefined || row[0] === null) continue;
+            const cell0 = String(row[0]).trim();
+            if (!cell0) continue;
+
+            // Detect week header: "WEEK: DD Mon to DD Mon_YYYY" or "DD Mon to DD Mon_YYYY"
+            const weekMatch = cell0.match(/(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+to\s+\d{1,2}\s+\w+/i);
+            if (weekMatch) {
+                const yearMatch = cell0.match(/_?(\d{4})/);
+                if (yearMatch) currentYear = parseInt(yearMatch[1]);
+                const startDay = parseInt(weekMatch[1]);
+                const startMonth = MONTHS_MAP[weekMatch[2]];
+                if (startMonth !== undefined) {
+                    weekStartDate = new Date(currentYear, startMonth, startDay);
+                }
+                continue;
+            }
+
+            // Skip non-day rows
+            if (cell0 === 'Day' || cell0.startsWith('Total') || cell0.startsWith('Sadhna') || cell0.startsWith('Sadhana')
+                || cell0 === 'OVERALL' || cell0.startsWith('WEEK') || cell0.startsWith('OVERALL')) continue;
+
+            // Match day rows: "Sun 08", "Mon 09", "Thur 12", "Sat 14" etc.
+            const dayMatch = cell0.match(/^(Sun|Mon|Tue|Wed|Thu|Thur|Fri|Sat)\s+(\d{1,2})$/i);
+            if (!dayMatch) continue;
+
+            const dayName = dayMatch[1].charAt(0).toUpperCase() + dayMatch[1].slice(1).toLowerCase();
+            const dayOfMonth = parseInt(dayMatch[2]);
+            const dayIdx = DAY_INDEX[dayName];
+            if (dayIdx === undefined) continue;
+
+            // Calculate actual date
+            let entryDate;
+            if (weekStartDate) {
+                entryDate = new Date(weekStartDate);
+                entryDate.setDate(weekStartDate.getDate() + dayIdx);
+            } else {
+                entryDate = new Date(currentYear, new Date().getMonth(), dayOfMonth);
+            }
+            const dateStr = toLocalDateStr(entryDate);
+
+            // Get raw cell values
+            const rawBed   = row[COL.bed]   !== undefined ? String(row[COL.bed]).trim()   : '';
+            const rawWake  = row[COL.wake]  !== undefined ? String(row[COL.wake]).trim()  : '';
+            const rawJapa  = row[COL.japa]  !== undefined ? String(row[COL.japa]).trim()  : '';
+            const rawMP    = row[COL.mp]    !== undefined ? String(row[COL.mp]).trim()     : '';
+            const rawDS    = row[COL.ds]    !== undefined ? row[COL.ds]                    : 0;
+            const rawRead  = row[COL.read]  !== undefined ? row[COL.read]                 : 0;
+            const rawHear  = row[COL.hear]  !== undefined ? row[COL.hear]                 : 0;
+            const rawNotes = row[COL.notes] !== undefined ? row[COL.notes]                : 0;
+
+            // Parse times (handles "11.35 pm", "03:00", "22:30" etc.)
+            const sleepTime   = parseTimeTo24h(rawBed);
+            const wakeupTime  = parseTimeTo24h(rawWake);
+            const chantingTime = parseTimeTo24h(rawJapa);
+            const mpTimeParsed = parseTimeTo24h(rawMP);
+
+            // Morning program: "no", "Not Done", "ND" = not done
+            const mpLower = rawMP.toLowerCase();
+            const mpNotDone = mpLower === 'no' || mpLower === 'not done' || mpLower === 'nd' || mpLower === '✗ nd';
+            const mpTimeClean = mpNotDone ? 'Not Done' : (mpTimeParsed || 'NR');
+
+            // Parse minutes (handles "30 min", "7 hrs", "0 min", plain numbers)
+            const dsSleepMins  = parseMinsValue(rawDS);
+            const readingMins  = parseMinsValue(rawRead);
+            const hearingMins  = parseMinsValue(rawHear);
+            const notesMins    = parseMinsValue(rawNotes);
+
+            // Skip fully empty rows
+            if (!sleepTime && !wakeupTime && !chantingTime && !mpTimeParsed && !mpNotDone
+                && readingMins === 0 && hearingMins === 0 && notesMins === 0 && dsSleepMins === 0) continue;
+
+            // Compute scores
+            const scores = computeScores(
+                sleepTime || 'NR',
+                wakeupTime || 'NR',
+                mpNotDone ? '' : (mpTimeParsed || 'NR'),
+                mpNotDone,
+                chantingTime || 'NR',
+                readingMins, hearingMins, notesMins, dsSleepMins
+            );
+            const totalScore = Object.values(scores).reduce((a, b) => a + b, 0);
+            const dayPercent = Math.round((totalScore / 175) * 100);
+
+            entries.push({
+                dateStr,
+                data: {
+                    sleepTime: sleepTime || 'NR',
+                    wakeupTime: wakeupTime || 'NR',
+                    morningProgramTime: mpTimeClean,
+                    chantingTime: chantingTime || 'NR',
+                    readingMinutes: readingMins,
+                    hearingMinutes: hearingMins,
+                    notesMinutes: notesMins,
+                    daySleepMinutes: dsSleepMins,
+                    scores, totalScore, dayPercent,
+                    submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    importedFromExcel: true
+                }
+            });
+        }
+
+        if (entries.length === 0) {
+            alert('No valid sadhna entries found in this file.\n\nMake sure it has a week header like "08 Mar to 14 Mar_2025" and day rows like "Sun 08".');
+            return;
+        }
+
+        // Sort entries by date
+        entries.sort((a, b) => a.dateStr.localeCompare(b.dateStr));
+        const oldest = entries[0].dateStr;
+        const newest = entries[entries.length - 1].dateStr;
+        const confirmed = confirm(
+            `Found ${entries.length} sadhna entries (${oldest} to ${newest}).\n\n` +
+            `Existing entries for the same dates will be overwritten.\n\nContinue?`
+        );
+        if (!confirmed) return;
+
+        // Progress modal
+        const modal = document.createElement('div');
+        modal.id = 'import-progress-modal';
+        modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+        modal.innerHTML = `
+            <div style="background:white;border-radius:14px;max-width:340px;width:100%;padding:28px;text-align:center;">
+                <div style="font-size:36px;margin-bottom:10px;">📤</div>
+                <div style="font-weight:700;font-size:16px;color:#2c3e50;margin-bottom:8px;">Importing Sadhna...</div>
+                <div id="import-progress-text" style="font-size:13px;color:#888;">0 / ${entries.length}</div>
+                <div style="margin-top:12px;background:#eee;border-radius:6px;height:8px;overflow:hidden;">
+                    <div id="import-progress-bar" style="width:0%;height:100%;background:#3498db;border-radius:6px;transition:width 0.3s;"></div>
+                </div>
+            </div>`;
+        document.body.appendChild(modal);
+
+        let imported = 0;
+        const BATCH_SIZE = 400;
+        for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+            const batch = db.batch();
+            const chunk = entries.slice(i, i + BATCH_SIZE);
+            chunk.forEach(entry => {
+                const ref = db.collection('users').doc(currentUser.uid).collection('sadhana').doc(entry.dateStr);
+                batch.set(ref, entry.data);
+            });
+            await batch.commit();
+            imported += chunk.length;
+            const progText = document.getElementById('import-progress-text');
+            const progBar = document.getElementById('import-progress-bar');
+            if (progText) progText.textContent = `${imported} / ${entries.length}`;
+            if (progBar) progBar.style.width = Math.round((imported / entries.length) * 100) + '%';
+        }
+
+        modal.innerHTML = `
+            <div style="background:white;border-radius:14px;max-width:340px;width:100%;padding:28px;text-align:center;">
+                <div style="font-size:36px;margin-bottom:10px;">✅</div>
+                <div style="font-weight:700;font-size:16px;color:#27ae60;margin-bottom:8px;">Import Complete!</div>
+                <div style="font-size:13px;color:#888;margin-bottom:16px;">${imported} entries imported successfully.</div>
+                <button onclick="document.getElementById('import-progress-modal').remove();_reportsLoading=false;loadReports(currentUser.uid,'weekly-reports-container');"
+                    style="padding:10px 24px;background:#3498db;color:white;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;width:auto;">
+                    OK
+                </button>
+            </div>`;
+    } catch (err) {
+        console.error('Import error:', err);
+        const modal = document.getElementById('import-progress-modal');
+        if (modal) modal.remove();
+        alert('Could not import the file. Please make sure it is a valid Excel file with the correct format.');
+    }
+};
+
 // --- 4. UI NAVIGATION ---
 function showSection(section) {
     ['auth', 'profile', 'dashboard'].forEach(s => {
@@ -181,16 +444,7 @@ window.switchMainTab = (tab) => {
 
     // Load data for the tab
     if (tab === 'home' && currentUser) loadHomeScreen();
-    if (tab === 'sadhna') {
-        // Show sadhana form
-        const sadhTab = document.getElementById('sadhana-tab');
-        if (sadhTab) { sadhTab.classList.remove('hidden'); sadhTab.classList.add('active'); }
-    }
-    if (tab === 'tapah') {
-        const tapTab = document.getElementById('tapah-tab');
-        if (tapTab) { tapTab.classList.remove('hidden'); tapTab.classList.add('active'); }
-        resetTapahForm();
-    }
+    if (tab === 'tapah') resetTapahForm();
 };
 
 // --- SUB-TAB SWITCHER (within Sadhna / Tapah) ---
@@ -213,16 +467,7 @@ window.switchSubTab = (parent, sub) => {
         activeBtn.style.color = 'white';
     }
 
-    // Show the inner tab content too
-    if (parent === 'sadhna' && sub === 'entry') {
-        const st = document.getElementById('sadhana-tab');
-        if (st) { st.classList.remove('hidden'); st.classList.add('active'); }
-    }
-    if (parent === 'tapah' && sub === 'entry') {
-        const tt = document.getElementById('tapah-tab');
-        if (tt) { tt.classList.remove('hidden'); tt.classList.add('active'); }
-        resetTapahForm();
-    }
+    if (parent === 'tapah' && sub === 'entry') resetTapahForm();
 
     // Load data
     if (parent === 'sadhna' && sub === 'reports' && currentUser) {
@@ -242,7 +487,9 @@ window.switchTab = (t) => {
 };
 
 // --- HOME SCREEN ---
-async function loadHomeScreen() {
+let _homeWeekOffset = 0; // 0 = this week, 1 = last week
+async function loadHomeScreen(weekOffset) {
+    if (weekOffset !== undefined) _homeWeekOffset = weekOffset;
     const container = document.getElementById('home-content');
     if (!container || !currentUser) return;
 
@@ -251,9 +498,9 @@ async function loadHomeScreen() {
     try {
         const today = new Date();
         const todayStr = toLocalDateStr(today);
-        // Get this week's Sunday
+        // Get target week's Sunday
         const thisWeekSun = new Date(today);
-        thisWeekSun.setDate(today.getDate() - today.getDay());
+        thisWeekSun.setDate(today.getDate() - today.getDay() - (_homeWeekOffset * 7));
         const sunStr = toLocalDateStr(thisWeekSun);
         const satDate = new Date(thisWeekSun);
         satDate.setDate(thisWeekSun.getDate() + 6);
@@ -351,19 +598,21 @@ async function loadHomeScreen() {
             return `<div style="text-align:center;"><div style="width:32px;height:32px;border-radius:50%;background:#e74c3c;margin:0 auto;display:flex;align-items:center;justify-content:center;color:white;font-size:14px;">✗</div><div style="font-size:10px;color:#555;margin-top:3px;">${d.name}</div></div>`;
         }).join('');
 
-        // Activity bars HTML — per-activity max (Day Sleep max is 10/day, rest 25/day)
-        const actMaxMap = { 'Day Sleep': elapsedDays * 10 };
-        const defaultActMax = elapsedDays * 25;
+        // Activity bars HTML — use full week max (same as Reports Sadhna % row)
+        const actMaxMap = { 'Day Sleep': 70 };  // 7 × 10
+        const defaultActMax = 175;               // 7 × 25
         const actEmojis = { Sleep: '🛏️', 'Wake-up': '⏰', 'Morning Prog.': '🙏', Chanting: '📿', Reading: '📖', Hearing: '🎧', 'Notes Rev.': '📝', 'Day Sleep': '😴' };
         const actBarsHtml = Object.entries(actTotals).map(([name, val]) => {
             const thisMax = actMaxMap[name] || defaultActMax;
-            const pct = thisMax > 0 ? Math.max(0, Math.round((val / thisMax) * 100)) : 0;
+            const pct = thisMax > 0 ? Math.round((val / thisMax) * 100) : 0;
+            const barWidth = Math.max(0, pct); // bar can't be negative width
+            const pctColor = pct < 0 ? '#e74c3c' : '#555';
             return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
                 <span style="font-size:12px;min-width:80px;text-align:right;color:#555;">${actEmojis[name] || ''} ${name}</span>
                 <div style="flex:1;background:#e8ecf1;border-radius:6px;height:10px;overflow:hidden;">
-                    <div style="width:${pct}%;height:100%;background:#3498db;border-radius:6px;transition:width 0.5s;"></div>
+                    <div style="width:${barWidth}%;height:100%;background:#3498db;border-radius:6px;transition:width 0.5s;"></div>
                 </div>
-                <span style="font-size:12px;color:#555;min-width:36px;text-align:right;font-weight:600;">${pct}%</span>
+                <span style="font-size:12px;color:${pctColor};min-width:36px;text-align:right;font-weight:600;">${pct}%</span>
             </div>`;
         }).join('');
 
@@ -376,7 +625,8 @@ async function loadHomeScreen() {
                         <strong style="color:#2c3e50;font-size:15px;">Weekly Summary</strong>
                     </div>
                     <div style="display:flex;gap:6px;">
-                        <button onclick="loadHomeScreen()" style="width:auto;padding:5px 14px;border-radius:20px;background:#2c3e50;color:white;font-size:12px;font-weight:600;border:none;margin:0;cursor:pointer;">This Week</button>
+                        <button onclick="loadHomeScreen(0)" style="width:auto;padding:5px 14px;border-radius:20px;background:${_homeWeekOffset===0?'#2c3e50':'#f0f0f0'};color:${_homeWeekOffset===0?'white':'#666'};font-size:12px;font-weight:600;border:none;margin:0;cursor:pointer;">This Week</button>
+                        <button onclick="loadHomeScreen(1)" style="width:auto;padding:5px 14px;border-radius:20px;background:${_homeWeekOffset===1?'#2c3e50':'#f0f0f0'};color:${_homeWeekOffset===1?'white':'#666'};font-size:12px;font-weight:600;border:none;margin:0;cursor:pointer;">Last Week</button>
                     </div>
                 </div>
                 <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
@@ -412,8 +662,8 @@ async function loadHomeScreen() {
                 </div>
             </div>
 
-            <!-- Today's reminder -->
-            ${!todayFilled ? `
+            <!-- Today's reminder (only for this week) -->
+            ${_homeWeekOffset === 0 ? (!todayFilled ? `
             <div class="card" style="padding:16px 20px;border-left:4px solid #f39c12;margin-top:0;">
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
                     <span style="font-size:18px;">⚠️</span>
@@ -430,7 +680,7 @@ async function loadHomeScreen() {
                     <span style="font-size:18px;">✅</span>
                     <span style="font-weight:600;color:#27ae60;">Today's sadhna is filled!</span>
                 </div>
-            </div>`}
+            </div>`) : ''}
 
             <!-- Activity This Week -->
             <div class="card" style="padding:20px;margin-top:0;">
@@ -972,10 +1222,8 @@ async function loadReports(userId, containerId) {
 
     // 4-week comparison is rendered AFTER weekly reports (called below after container.innerHTML)
 
-    // Always show last 4 weeks in detailed reports, even if all NR
-    // Only show "no data" if we have zero weeks to show at all (impossible since we always add 4)
-    const allSuns = new Set([...last4Suns, ...Object.keys(weeksData)]);
-    const sortedWeeks = Array.from(allSuns).sort((a, b) => b.localeCompare(a));
+    // Show only the last 4 weeks
+    const sortedWeeks = Array.from(last4Suns).sort((a, b) => b.localeCompare(a));
 
     let html = '';
     sortedWeeks.forEach(sunStr => {
