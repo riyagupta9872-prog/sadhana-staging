@@ -20,6 +20,9 @@ let scoreChart = null, activityChart = null;
 let editingDate = null;
 
 // --- 2. HELPERS ---
+// App start date — days before this date are not penalised as NR (app didn't exist yet)
+const APP_START_DATE = '2026-03-27';
+
 // Local date helpers — avoids toISOString() UTC bug
 // (IST users between midnight–5:30 AM would get yesterday's date with toISOString)
 function toLocalDateStr(date) {
@@ -531,7 +534,7 @@ async function loadHomeScreen(weekOffset) {
             const isToday = ds === todayStr;
             const filled = !!weekData[ds];
 
-            if (!isFuture) {
+            if (!isFuture && ds >= APP_START_DATE) {
                 elapsedDays++;
                 if (filled) {
                     daysFilled++;
@@ -1222,8 +1225,15 @@ async function loadReports(userId, containerId) {
 
     // 4-week comparison is rendered AFTER weekly reports (called below after container.innerHTML)
 
-    // Show only the last 4 weeks
-    const sortedWeeks = Array.from(last4Suns).sort((a, b) => b.localeCompare(a));
+    // Show only the last 4 weeks that have at least one day >= APP_START_DATE
+    const sortedWeeks = Array.from(last4Suns)
+        .filter(sunStr => {
+            // Week's Saturday = sunStr + 6 days
+            const sat = new Date(sunStr + 'T00:00:00');
+            sat.setDate(sat.getDate() + 6);
+            return toLocalDateStr(sat) >= APP_START_DATE;
+        })
+        .sort((a, b) => b.localeCompare(a));
 
     let html = '';
     sortedWeeks.forEach(sunStr => {
@@ -1243,6 +1253,7 @@ async function loadReports(userId, containerId) {
             const dateStr = toLocalDateStr(currentDate);
             const isFuture = currentDate > todayStart;
             if (isFuture) continue; // future days don't count toward totals
+            if (dateStr < APP_START_DATE) continue; // before app launch — not NR
 
             const entry = week.days[dateStr] || getNRData(dateStr);
             const isNR = !week.days[dateStr];
@@ -1268,8 +1279,9 @@ async function loadReports(userId, containerId) {
             const dateStr = toLocalDateStr(currentDate);
             const isFuture = currentDate > todayStart;
 
-            // Future dates — skip entirely, no row shown
+            // Future dates and pre-app-launch dates — skip entirely, no row shown
             if (isFuture) continue;
+            if (dateStr < APP_START_DATE) continue;
 
             const entry = week.days[dateStr] || getNRData(dateStr);
             const isNR = !week.days[dateStr];
@@ -1314,8 +1326,8 @@ async function loadReports(userId, containerId) {
 
             tableRows += `
                 <tr style="${rowBg}border-bottom:1px solid #f0f0f0;">
-                    <td style="text-align:center;padding:7px 5px;">${pfBadge}</td>
-                    <td style="white-space:nowrap;padding:7px 8px;font-size:13px;">${dateLabel}</td>
+                    <td style="text-align:center;padding:7px 5px;${isNR?'background:#fff8f8;':'background:white;'}">${pfBadge}</td>
+                    <td style="white-space:nowrap;padding:7px 8px;font-size:13px;border-right:2px solid #e0e0e0;${isNR?'background:#fff8f8;':'background:white;'}">${dateLabel}</td>
                     <td style="padding:7px 6px;font-size:12px;white-space:nowrap;color:${isNR?'#e74c3c':'#333'};">${tv(entry.sleepTime)}</td>
                     ${renderScoreCell(entry.scores?.sleep, isNR)}
                     <td style="padding:7px 6px;font-size:12px;white-space:nowrap;color:${isNR?'#e74c3c':'#333'};">${tv(entry.wakeupTime)}</td>
@@ -1370,15 +1382,15 @@ async function loadReports(userId, containerId) {
             <div class="week-card ${weekClass}">
                 <div class="week-header" onclick="this.nextElementSibling.classList.toggle('expanded'); this.querySelector('.toggle-icon').textContent = this.nextElementSibling.classList.contains('expanded') ? '▼' : '▶';">
                     <span>📅 ${week.label.split('_')[0]} ${week.label.split('_')[1] || ''}</span>
-                    <span style="color:${fairPercent>=50?'#27ae60':'#e74c3c'};font-weight:700;">${adjustedTotal} / ${fairMax} (${fairPercent}%) <span class="toggle-icon">▶</span></span>
+                    <span style="color:${fairPercent>=50?'#27ae60':'#e74c3c'};font-weight:700;text-align:right;">${adjustedTotal}/${fairMax} (${fairPercent}%) <span class="toggle-icon">▶</span></span>
                 </div>
                 <div class="week-content">
                     <div style="overflow-x:auto;">
                     <table class="daily-table" style="font-size:13px;">
                         <thead>
                             <tr style="background:#2c3e50;color:white;font-size:12px;">
-                                <th style="padding:8px 5px;text-align:center;min-width:44px;">P/F</th>
-                                <th style="padding:8px 6px;white-space:nowrap;min-width:52px;">Date</th>
+                                <th style="padding:8px 5px;text-align:center;width:44px;min-width:44px;">P/F</th>
+                                <th style="padding:8px 6px;white-space:nowrap;min-width:52px;border-right:2px solid #1a252f;">Date</th>
                                 <th style="padding:8px 6px;white-space:nowrap;">Bed</th>
                                 <th style="padding:8px 4px;text-align:center;min-width:32px;">M</th>
                                 <th style="padding:8px 6px;white-space:nowrap;">Wake</th>
@@ -1402,7 +1414,7 @@ async function loadReports(userId, containerId) {
                         <tbody>
                             ${tableRows}
                             <tr style="background:#f0f4ff;font-weight:bold;font-size:12px;">
-                                <td colspan="2" style="padding:7px 8px;color:#2c3e50;">Total</td>
+                                <td colspan="2" style="padding:7px 8px;color:#2c3e50;position:sticky;left:0;z-index:2;background:#f0f4ff;">Total</td>
                                 <td style="padding:7px 4px;text-align:center;color:#888;">—</td>
                                 ${totCell(weekTotals.sleepMarks, 175)}
                                 <td style="padding:7px 4px;text-align:center;color:#888;">—</td>
@@ -1422,7 +1434,7 @@ async function loadReports(userId, containerId) {
                                 <td colspan="2" style="padding:7px 4px;text-align:center;color:#888;">—</td>
                             </tr>
                             <tr style="background:#e8f0fe;font-weight:bold;font-size:12px;">
-                                <td colspan="2" style="padding:6px 8px;color:#2c3e50;">Sadhna %</td>
+                                <td colspan="2" style="padding:6px 8px;color:#2c3e50;position:sticky;left:0;z-index:2;background:#e8f0fe;">Sadhna %</td>
                                 ${pctCell(weekTotals.sleepMarks, 175)}
                                 ${pctCell(weekTotals.wakeupMarks, 175)}
                                 ${pctCell(weekTotals.chantingMarks, 175)}
@@ -1499,6 +1511,7 @@ function generate4WeekComparison(weeksNewestFirst, weeksData) {
             const dateStr = toLocalDateStr(currentDate);
             const isFuture = new Date(dateStr + 'T00:00:00') > today;
             if (isFuture) continue; // skip future days entirely for fair denominator
+            if (dateStr < APP_START_DATE) continue; // before app launch — not NR
             const entry = (week && week.days[dateStr]) ? week.days[dateStr] : getNRData(dateStr);
             const isFilled = !!(week && week.days[dateStr]);
             weekTotal += entry.totalScore ?? 0;
@@ -1539,8 +1552,14 @@ function generate4WeekComparison(weeksNewestFirst, weeksData) {
         return { ...ws, trendIcon, trendColor };
     });
 
-    // Display newest week first
-    const displayStats = [...weekStatsWithTrend].reverse();
+    // Display newest week first, hide weeks entirely before app start
+    const displayStats = [...weekStatsWithTrend]
+        .reverse()
+        .filter(ws => {
+            const sat = new Date(ws.sunStr + 'T00:00:00');
+            sat.setDate(sat.getDate() + 6);
+            return toLocalDateStr(sat) >= APP_START_DATE;
+        });
 
     let tableHTML = `
         <table class="comparison-table">
@@ -1622,14 +1641,16 @@ async function generateDailyCharts() {
     for (let i = 27; i >= 0; i--) {
         const d = new Date(today);
         d.setDate(today.getDate() - i);
-        dates.push(toLocalDateStr(d));  // IST-safe local date
+        const ds = toLocalDateStr(d);
+        if (ds >= APP_START_DATE) dates.push(ds);  // Only show from app start date
     }
 
+    if (dates.length === 0) return;
     // Use date range query — works for any number of dates
     const snapshot = await db.collection('users').doc(currentUser.uid)
         .collection('sadhana')
         .where(firebase.firestore.FieldPath.documentId(), '>=', dates[0])
-        .where(firebase.firestore.FieldPath.documentId(), '<=', dates[27])
+        .where(firebase.firestore.FieldPath.documentId(), '<=', dates[dates.length - 1])
         .get();
 
     const data = {};
@@ -1640,12 +1661,13 @@ async function generateDailyCharts() {
     const scores = dates.map(d => {
         if (data[d] !== undefined) return data[d].totalScore ?? null;
         if (d === todayStr) return null;
+        if (d < APP_START_DATE) return null; // before app launch — no penalty
         return -40;
     });
 
     // Activity totals: NR past days contribute penalty scores (same as getNRData)
     const NR_SCORES = { sleep: -5, wakeup: -5, morningProgram: -5, chanting: -5, reading: -5, hearing: -5, notes: -5, daySleep: 0 };
-    const getS = (d, key) => data[d] ? (data[d]?.scores?.[key] ?? 0) : (d === todayStr ? 0 : NR_SCORES[key]);
+    const getS = (d, key) => data[d] ? (data[d]?.scores?.[key] ?? 0) : (d === todayStr || d < APP_START_DATE ? 0 : NR_SCORES[key]);
     _currentActivityTotals = {
         Sleep:           dates.reduce((s, d) => s + getS(d, 'sleep'), 0),
         'Wake-up':       dates.reduce((s, d) => s + getS(d, 'wakeup'), 0),
@@ -1657,15 +1679,15 @@ async function generateDailyCharts() {
         'Day Sleep':     dates.reduce((s, d) => s + getS(d, 'daySleep'), 0),
     };
 
-    // Ring: include NR past days at -40, exclude today if not yet filled
-    const datesForRing = dates.filter(d => d !== todayStr || data[d]);
+    // Ring: include NR past days at -40, exclude today if not yet filled, exclude pre-app-start
+    const datesForRing = dates.filter(d => (d !== todayStr || data[d]) && d >= APP_START_DATE);
     const totalEarned = datesForRing.reduce((s, d) => s + (data[d] ? (data[d].totalScore ?? 0) : -40), 0);
     const maxPossible = datesForRing.length * 175;
     const fairPercent = maxPossible > 0 ? Math.round((totalEarned / maxPossible) * 100) : 0;
 
     const ringContainer = document.getElementById('score-ring-container');
     if (ringContainer) ringContainer.style.display = datesForRing.length > 0 ? 'block' : 'none';
-    if (datesForRing.length > 0) renderScoreRing(fairPercent, `${dates[0].slice(5).replace('-','/')} – ${dates[27].slice(5).replace('-','/')}`, datesForRing.length, totalEarned);
+    if (datesForRing.length > 0) renderScoreRing(fairPercent, `${dates[0].slice(5).replace('-','/')} – ${dates[dates.length-1].slice(5).replace('-','/')}`, datesForRing.length, totalEarned);
 
     renderScoreLineChart(labels, scores);
     renderActivityBarChart(_currentActivityTotals);
@@ -1707,9 +1729,10 @@ async function generateWeeklyCharts() {
         const wData = {};
         snapshot.forEach(doc => { wData[doc.id] = doc.data(); });
 
-        // Count all past days in week (submitted or NR), skip future
+        // Count all past days in week (submitted or NR), skip future and pre-app-start
         weekDates.forEach(dateStr => {
             if (dateStr > todayStr2) return; // future day — skip
+            if (dateStr < APP_START_DATE) return; // before app launch — skip
             if (wData[dateStr]) {
                 weekTotal += wData[dateStr].totalScore ?? 0;
             } else {
@@ -1727,6 +1750,7 @@ async function generateWeeklyCharts() {
             const NR_SC = { sleep:-5, wakeup:-5, morningProgram:-5, chanting:-5, reading:-5, hearing:-5, notes:-5, daySleep:0 };
             weekDates.forEach(d => {
                 if (d > todayStr2) return;
+                if (d < APP_START_DATE) return;
                 const src = wData[d] ? wData[d].scores : NR_SC;
                 _currentActivityTotals['Sleep']          += src?.sleep ?? 0;
                 _currentActivityTotals['Wake-up']        += src?.wakeup ?? 0;
@@ -2422,7 +2446,7 @@ async function loadActivityAnalysis(period) {
         const d = new Date(weekSun);
         d.setDate(weekSun.getDate() + i);
         const ds = toLocalDateStr(d);
-        if (ds <= toLocalDateStr(today)) weekDates.push(ds);
+        if (ds <= toLocalDateStr(today) && ds >= APP_START_DATE) weekDates.push(ds);
     }
 
     if (weekDates.length === 0) {

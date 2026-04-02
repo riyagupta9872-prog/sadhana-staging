@@ -32,18 +32,28 @@
         .tab-content { display: none; }
         .tab-content.active { display: block; }
         .week-card { background: white; margin-bottom: 10px; border-radius: 8px; border-left: 5px solid var(--secondary); box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
-        .week-header { padding: 15px; cursor: pointer; display: flex; justify-content: space-between; font-weight: bold; }
+        .week-header { padding: 15px; cursor: pointer; display: flex; justify-content: space-between; font-weight: bold; align-items: center; gap: 8px; }
+        .week-header > span { white-space: nowrap; font-size: 13px; }
         .week-content { padding: 15px; border-top: 1px solid #eee; display: none; }
         .week-content.expanded { display: block; }
         .comparison-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        .comparison-table th, .comparison-table td { border: 1px solid #ddd; padding: 12px; text-align: center; }
+        .comparison-table th, .comparison-table td { border: 1px solid #ddd; padding: 10px 8px; text-align: center; font-size: 13px; }
         .comparison-table th { background: var(--secondary); color: white; font-weight: 600; }
+        .comparison-table td:first-child { white-space: nowrap; }
         .comparison-table tr:hover { background: #f5f5f5; }
-        .daily-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9em; }
+        .daily-table { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 10px; font-size: 0.9em; }
         .daily-table th, .daily-table td { border: 1px solid #eee; padding: 8px; text-align: center; }
         .daily-table thead th { background: #2c3e50 !important; color: white !important; font-weight: 600; }
         .daily-table tbody td { text-align: center; }
         .daily-table tr:hover { background: #f9f9f9; }
+        /* Freeze P/F and Date columns */
+        .daily-table th:nth-child(1), .daily-table td:nth-child(1) { position: sticky; left: 0; z-index: 2; background: inherit; }
+        .daily-table th:nth-child(2), .daily-table td:nth-child(2) { position: sticky; left: 44px; z-index: 2; background: inherit; box-shadow: 2px 0 4px rgba(0,0,0,0.06); }
+        .daily-table thead th:nth-child(1), .daily-table thead th:nth-child(2) { z-index: 3; }
+        .daily-table tbody tr { background: white; }
+        .daily-table tbody tr:hover { background: #f9f9f9; }
+        .daily-table tbody tr[style*="background:#fff8f8"] td:nth-child(1),
+        .daily-table tbody tr[style*="background:#fff8f8"] td:nth-child(2) { background: #fff8f8; }
         .score-positive { color: var(--success); font-weight: bold; }
         .score-negative { color: var(--danger); font-weight: bold; }
         .score-neutral { color: #666; }
