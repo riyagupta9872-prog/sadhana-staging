@@ -420,6 +420,414 @@ window.importExcelFile = async (input) => {
     }
 };
 
+// --- 3C. TAPAH EXCEL DOWNLOAD ---
+window.downloadTapahExcel = async () => {
+    if (!currentUser) { alert('Please login first.'); return; }
+    if (typeof XLSX === 'undefined') { alert('Excel library not loaded yet. Please wait and try again.'); return; }
+    try {
+        const snap = await db.collection('users').doc(currentUser.uid).collection('tapah').get();
+        if (snap.empty) { alert('No Tapah data found to download.'); return; }
+
+        const docs = [];
+        snap.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
+        docs.sort((a,b) => a.id.localeCompare(b.id)); // oldest → newest (left→right)
+
+        const dates = docs.map(d => d.id);
+        // Rows: Question | Max | date1 | date2 | ... | Total Obtained | Total Max
+        const header = ['Question', 'Max/day', ...dates, 'Total Obtained', 'Total Max'];
+        const rows = [header];
+
+        // Anukul section header
+        rows.push(['🌿 ANUKULASYA (Favourable)', '', ...dates.map(() => ''), '', '']);
+
+        ANUKUL_QUESTIONS.forEach(q => {
+            let rowTotal = 0;
+            const cells = docs.map(d => {
+                const val = d.anukul?.[q.id] || 'no';
+                const sc = getAanukulScore(val);
+                rowTotal += sc;
+                return `${val==='yes'?'Y':val==='partial'?'P':'N'} (${sc>=0?'+':''}${sc})`;
+            });
+            rows.push([q.label, 5, ...cells, rowTotal, docs.length * 5]);
+        });
+
+        // Pratikul section header
+        rows.push(['🚫 PRATIKULASYA (Unfavourable)', '', ...dates.map(() => ''), '', '']);
+
+        PRATIKUL_QUESTIONS.forEach(q => {
+            let rowTotal = 0;
+            const cells = docs.map(d => {
+                const val = d.pratikul?.[q.id] || 'no';
+                const sc = getPratikulScore(val);
+                rowTotal += sc;
+                return `${val==='yes'?'Y':val==='partial'?'P':'N'} (${sc>=0?'+':''}${sc})`;
+            });
+            rows.push([q.label, 5, ...cells, rowTotal, docs.length * 5]);
+        });
+
+        // Totals rows
+        rows.push(['', '', ...dates.map(() => ''), '', '']);
+        rows.push(['Anukul Total', 25, ...docs.map(d => d.anukulTotal ?? 0),
+            docs.reduce((s,d) => s+(d.anukulTotal||0),0), docs.length*25]);
+        rows.push(['Pratikul Total', 25, ...docs.map(d => d.pratikulTotal ?? 0),
+            docs.reduce((s,d) => s+(d.pratikulTotal||0),0), docs.length*25]);
+        rows.push(['Grand Total', 50, ...docs.map(d => d.totalScore ?? 0),
+            docs.reduce((s,d) => s+(d.totalScore||0),0), docs.length*50]);
+        rows.push(['Percent', '100%', ...docs.map(d => (d.percent ?? 0)+'%'), '', '']);
+
+        const ws = XLSX.utils.aoa_to_sheet(rows);
+        ws['!cols'] = [{ wch: 42 }, { wch: 8 }, ...dates.map(() => ({ wch: 14 })), { wch: 14 }, { wch: 10 }];
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Tapah History');
+        XLSX.writeFile(wb, `${userProfile?.name || 'My'}_Tapah_History.xlsx`);
+    } catch (err) {
+        alert('Could not download. Error: ' + (err.code || err.message));
+    }
+};
+
+// --- 3D. TAPAH EXCEL IMPORT ---
+window.importTapahExcel = async (input) => {
+    if (!input.files || !input.files[0]) return;
+    if (!currentUser) { alert('Please login first.'); return; }
+    if (typeof XLSX === 'undefined') { alert('Excel library not loaded yet.'); return; }
+
+    const file = input.files[0];
+    input.value = '';
+
+    try {
+        const data = await file.arrayBuffer();
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+        if (!rows || rows.length < 2) { alert('File appears empty or wrong format.'); return; }
+
+        const headerRow = rows[0].map(c => String(c || '').trim());
+        const dateCol = 0;
+        // Map question label → column index
+        const colMap = {};
+        headerRow.forEach((h, i) => { colMap[h] = i; });
+
+        const entries = [];
+        for (let r = 1; r < rows.length; r++) {
+            const row = rows[r];
+            if (!row || !row[dateCol]) continue;
+            const dateStr = String(row[dateCol]).trim();
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) continue;
+
+            const anukulAnswers = {}, pratikulAnswers = {}, anukulScores = {}, pratikulScores = {};
+            let anukulTotal = 0, pratikulTotal = 0;
+
+            ANUKUL_QUESTIONS.forEach(q => {
+                const ci = colMap[q.label];
+                const val = ci !== undefined && row[ci] ? String(row[ci]).trim().toLowerCase() : 'no';
+                const clean = ['yes','partial','no'].includes(val) ? val : 'no';
+                anukulAnswers[q.id] = clean;
+                anukulScores[q.id] = getAanukulScore(clean);
+                anukulTotal += anukulScores[q.id];
+            });
+            PRATIKUL_QUESTIONS.forEach(q => {
+                const ci = colMap[q.label];
+                const val = ci !== undefined && row[ci] ? String(row[ci]).trim().toLowerCase() : 'no';
+                const clean = ['yes','partial','no'].includes(val) ? val : 'no';
+                pratikulAnswers[q.id] = clean;
+                pratikulScores[q.id] = getPratikulScore(clean);
+                pratikulTotal += pratikulScores[q.id];
+            });
+
+            const total = anukulTotal + pratikulTotal;
+            entries.push({ dateStr, data: {
+                anukul: anukulAnswers, pratikul: pratikulAnswers,
+                anukulScores, pratikulScores, anukulTotal, pratikulTotal,
+                totalScore: total, percent: Math.round((total / 50) * 100),
+                submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                importedFromExcel: true
+            }});
+        }
+
+        if (entries.length === 0) { alert('No valid Tapah entries found. Make sure you are using the exported format.'); return; }
+        entries.sort((a, b) => a.dateStr.localeCompare(b.dateStr));
+        const confirmed = confirm(`Found ${entries.length} Tapah entries (${entries[0].dateStr} to ${entries[entries.length-1].dateStr}).\n\nExisting entries will be overwritten. Continue?`);
+        if (!confirmed) return;
+
+        const modal = document.createElement('div');
+        modal.id = 'import-progress-modal';
+        modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+        modal.innerHTML = `<div style="background:white;border-radius:14px;max-width:340px;width:100%;padding:28px;text-align:center;">
+            <div style="font-size:36px;margin-bottom:10px;">📤</div>
+            <div style="font-weight:700;font-size:16px;color:#2c3e50;margin-bottom:8px;">Importing Tapah...</div>
+            <div id="import-progress-text" style="font-size:13px;color:#888;">0 / ${entries.length}</div>
+            <div style="margin-top:12px;background:#eee;border-radius:6px;height:8px;overflow:hidden;">
+                <div id="import-progress-bar" style="width:0%;height:100%;background:#764ba2;border-radius:6px;transition:width 0.3s;"></div>
+            </div></div>`;
+        document.body.appendChild(modal);
+
+        let imported = 0;
+        for (let i = 0; i < entries.length; i += 400) {
+            const batch = db.batch();
+            entries.slice(i, i + 400).forEach(e => {
+                batch.set(db.collection('users').doc(currentUser.uid).collection('tapah').doc(e.dateStr), e.data);
+            });
+            await batch.commit();
+            imported += Math.min(400, entries.length - i);
+            const pt = document.getElementById('import-progress-text');
+            const pb = document.getElementById('import-progress-bar');
+            if (pt) pt.textContent = `${imported} / ${entries.length}`;
+            if (pb) pb.style.width = Math.round((imported / entries.length) * 100) + '%';
+        }
+
+        modal.innerHTML = `<div style="background:white;border-radius:14px;max-width:340px;width:100%;padding:28px;text-align:center;">
+            <div style="font-size:36px;margin-bottom:10px;">✅</div>
+            <div style="font-weight:700;font-size:16px;color:#27ae60;margin-bottom:8px;">Import Complete!</div>
+            <div style="font-size:13px;color:#888;margin-bottom:16px;">${imported} Tapah entries imported.</div>
+            <button onclick="document.getElementById('import-progress-modal').remove();loadTapahReport();"
+                style="padding:10px 24px;background:#764ba2;color:white;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;width:auto;">OK</button></div>`;
+    } catch (err) {
+        const m = document.getElementById('import-progress-modal');
+        if (m) m.remove();
+        alert('Could not import file. Error: ' + (err.code || err.message));
+    }
+};
+
+// --- 3E. TAPAH-2 EXCEL DOWNLOAD ---
+window.downloadTapah2Excel = async () => {
+    if (!currentUser) { alert('Please login first.'); return; }
+    if (typeof XLSX === 'undefined') { alert('Excel library not loaded yet.'); return; }
+    try {
+        const snap = await db.collection('users').doc(currentUser.uid).collection('tapah2').get();
+        if (snap.empty) { alert('No Tapah-2 data found to download.'); return; }
+
+        const docs = [];
+        snap.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
+        docs.sort((a,b) => a.id.localeCompare(b.id)); // oldest → newest
+
+        const dates = docs.map(d => d.id);
+        const header = ['Question', 'Max/day', ...dates, 'Total Obtained', 'Total Max'];
+        const rows = [header];
+
+        TAPAH2_CATS.forEach(cat => {
+            const catQs = TAPAH2_QUESTIONS.filter(q => q.cat === cat.id);
+            const catMaxPerDay = catQs.reduce((s,q) => s+q.max, 0);
+            // Category section header
+            rows.push([`${cat.emoji} ${cat.label}`, catMaxPerDay, ...dates.map(()=>''), '', '']);
+
+            catQs.forEach(q => {
+                let rowTotal = 0;
+                const cells = docs.map(d => {
+                    const sc = d.scores?.[q.id] ?? 0;
+                    rowTotal += sc;
+                    return `${sc}/${q.max}`;
+                });
+                rows.push([`  ${q.label}`, q.max, ...cells, rowTotal, docs.length * q.max]);
+            });
+
+            // Category subtotal row
+            const catTotals = docs.map(d => catQs.reduce((s,q) => s+(d.scores?.[q.id]||0),0));
+            rows.push([`${cat.emoji} ${cat.label} Subtotal`, catMaxPerDay,
+                ...catTotals.map(t => `${t}/${catMaxPerDay}`),
+                catTotals.reduce((a,b)=>a+b,0), docs.length * catMaxPerDay]);
+            rows.push(['', '', ...dates.map(()=>''), '', '']); // spacer
+        });
+
+        // Grand total rows
+        rows.push(['Grand Total', TAPAH2_MAX, ...docs.map(d => `${d.totalScore??0}/${TAPAH2_MAX}`),
+            docs.reduce((s,d)=>s+(d.totalScore||0),0), docs.length * TAPAH2_MAX]);
+        rows.push(['Percent', '100%', ...docs.map(d => (d.percent??0)+'%'), '', '']);
+
+        const ws = XLSX.utils.aoa_to_sheet(rows);
+        ws['!cols'] = [{ wch: 44 }, { wch: 8 }, ...dates.map(() => ({ wch: 12 })), { wch: 14 }, { wch: 10 }];
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Tapah-2 History');
+        XLSX.writeFile(wb, `${userProfile?.name || 'My'}_Tapah2_History.xlsx`);
+    } catch (err) {
+        alert('Could not download. Error: ' + (err.code || err.message));
+    }
+};
+
+// --- 3F. TAPAH-2 EXCEL IMPORT ---
+window.importTapah2Excel = async (input) => {
+    if (!input.files || !input.files[0]) return;
+    if (!currentUser) { alert('Please login first.'); return; }
+    if (typeof XLSX === 'undefined') { alert('Excel library not loaded yet.'); return; }
+
+    const file = input.files[0];
+    input.value = '';
+
+    try {
+        const data = await file.arrayBuffer();
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+        if (!rows || rows.length < 2) { alert('File appears empty or wrong format.'); return; }
+
+        const headerRow = rows[0].map(c => String(c || '').trim());
+        // Build map: question column header → question id
+        const qColMap = {};
+        TAPAH2_QUESTIONS.forEach(q => {
+            const expectedHeader = `${q.catLabel} | ${q.label} (max ${q.max})`;
+            const idx = headerRow.indexOf(expectedHeader);
+            if (idx >= 0) qColMap[q.id] = idx;
+        });
+
+        const entries = [];
+        for (let r = 1; r < rows.length; r++) {
+            const row = rows[r];
+            if (!row || !row[0]) continue;
+            const dateStr = String(row[0]).trim();
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) continue;
+
+            const scores = {};
+            let total = 0;
+            TAPAH2_QUESTIONS.forEach(q => {
+                const ci = qColMap[q.id];
+                const raw = ci !== undefined && row[ci] !== undefined ? parseInt(row[ci], 10) : 0;
+                const val = isNaN(raw) ? 0 : Math.max(0, Math.min(q.max, raw));
+                scores[q.id] = val;
+                total += val;
+            });
+
+            entries.push({ dateStr, data: {
+                scores, totalScore: total,
+                percent: Math.round((total / TAPAH2_MAX) * 100),
+                submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                importedFromExcel: true
+            }});
+        }
+
+        if (entries.length === 0) { alert('No valid Tapah-2 entries found. Make sure you are using the exported format.'); return; }
+        entries.sort((a, b) => a.dateStr.localeCompare(b.dateStr));
+        const confirmed = confirm(`Found ${entries.length} Tapah-2 entries (${entries[0].dateStr} to ${entries[entries.length-1].dateStr}).\n\nExisting entries will be overwritten. Continue?`);
+        if (!confirmed) return;
+
+        const modal = document.createElement('div');
+        modal.id = 'import-progress-modal';
+        modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+        modal.innerHTML = `<div style="background:white;border-radius:14px;max-width:340px;width:100%;padding:28px;text-align:center;">
+            <div style="font-size:36px;margin-bottom:10px;">📤</div>
+            <div style="font-weight:700;font-size:16px;color:#2c3e50;margin-bottom:8px;">Importing Tapah-2...</div>
+            <div id="import-progress-text" style="font-size:13px;color:#888;">0 / ${entries.length}</div>
+            <div style="margin-top:12px;background:#eee;border-radius:6px;height:8px;overflow:hidden;">
+                <div id="import-progress-bar" style="width:0%;height:100%;background:#e67e22;border-radius:6px;transition:width 0.3s;"></div>
+            </div></div>`;
+        document.body.appendChild(modal);
+
+        let imported = 0;
+        for (let i = 0; i < entries.length; i += 400) {
+            const batch = db.batch();
+            entries.slice(i, i + 400).forEach(e => {
+                batch.set(db.collection('users').doc(currentUser.uid).collection('tapah2').doc(e.dateStr), e.data);
+            });
+            await batch.commit();
+            imported += Math.min(400, entries.length - i);
+            const pt = document.getElementById('import-progress-text');
+            const pb = document.getElementById('import-progress-bar');
+            if (pt) pt.textContent = `${imported} / ${entries.length}`;
+            if (pb) pb.style.width = Math.round((imported / entries.length) * 100) + '%';
+        }
+
+        modal.innerHTML = `<div style="background:white;border-radius:14px;max-width:340px;width:100%;padding:28px;text-align:center;">
+            <div style="font-size:36px;margin-bottom:10px;">✅</div>
+            <div style="font-weight:700;font-size:16px;color:#27ae60;margin-bottom:8px;">Import Complete!</div>
+            <div style="font-size:13px;color:#888;margin-bottom:16px;">${imported} Tapah-2 entries imported.</div>
+            <button onclick="document.getElementById('import-progress-modal').remove();loadTapah2Report();"
+                style="padding:10px 24px;background:#e67e22;color:white;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;width:auto;">OK</button></div>`;
+    } catch (err) {
+        const m = document.getElementById('import-progress-modal');
+        if (m) m.remove();
+        alert('Could not import file. Error: ' + (err.code || err.message));
+    }
+};
+
+// --- 3G. MASTER EXCEL DOWNLOAD (all 3 tabs) ---
+window.downloadMasterExcel = async () => {
+    if (!currentUser) { alert('Please login first.'); return; }
+    if (typeof XLSX === 'undefined') { alert('Excel library not loaded yet.'); return; }
+    try {
+        const [sadhnaSnap, tapahSnap, tapah2Snap] = await Promise.all([
+            db.collection('users').doc(currentUser.uid).collection('sadhana').get(),
+            db.collection('users').doc(currentUser.uid).collection('tapah').get(),
+            db.collection('users').doc(currentUser.uid).collection('tapah2').get(),
+        ]);
+
+        const wb = XLSX.utils.book_new();
+
+        // ── Sheet 1: Sadhna (existing format) ──
+        if (!sadhnaSnap.empty) {
+            const weeksData = {};
+            sadhnaSnap.forEach(doc => {
+                const wi = getWeekInfo(doc.id);
+                if (!weeksData[wi.sunStr]) weeksData[wi.sunStr] = { label: wi.label, sunStr: wi.sunStr, days: {} };
+                weeksData[wi.sunStr].days[doc.id] = doc.data();
+            });
+            const sortedWeeks = Object.keys(weeksData).sort((a,b) => b.localeCompare(a));
+            const dataArray = [];
+            const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+            sortedWeeks.forEach((sunStr, wi) => {
+                const week = weeksData[sunStr];
+                dataArray.push([`WEEK: ${week.label}`]);
+                dataArray.push(['Day','1.To Bed','Mks','2. Wake Up','Mks','3. Japa','Mks','4. MP','Mks','5. DS','Mks','6. Pathan','Mks','7. Sarwan','Mks','8. Ntes Rev.','Mks','Day Wise']);
+                let wt = { sleepM:0,wakeupM:0,morningProgramM:0,chantingM:0,readingM:0,hearingM:0,notesM:0,daySleepM:0,readingMins:0,hearingMins:0,notesMins:0,total:0 };
+                const weekStart = new Date(week.sunStr + 'T00:00:00');
+                for (let i = 0; i < 7; i++) {
+                    const cd = new Date(weekStart); cd.setDate(weekStart.getDate() + i);
+                    const ds = toLocalDateStr(cd);
+                    const entry = week.days[ds] || getNRData(ds);
+                    const readMins = entry.readingMinutes === 'NR' ? 0 : (entry.readingMinutes || 0);
+                    const hearMins = entry.hearingMinutes === 'NR' ? 0 : (entry.hearingMinutes || 0);
+                    const notesMins = entry.notesMinutes === 'NR' ? 0 : (entry.notesMinutes || 0);
+                    wt.sleepM += entry.scores?.sleep ?? 0; wt.wakeupM += entry.scores?.wakeup ?? 0;
+                    wt.morningProgramM += entry.scores?.morningProgram ?? 0; wt.chantingM += entry.scores?.chanting ?? 0;
+                    wt.readingM += entry.scores?.reading ?? 0; wt.hearingM += entry.scores?.hearing ?? 0;
+                    wt.notesM += entry.scores?.notes ?? 0; wt.daySleepM += entry.scores?.daySleep ?? 0;
+                    wt.readingMins += readMins; wt.hearingMins += hearMins; wt.notesMins += notesMins;
+                    wt.total += entry.totalScore ?? 0;
+                    dataArray.push([`${dayNames[i]} ${String(cd.getDate()).padStart(2,'0')}`,entry.sleepTime||'NR',entry.scores?.sleep??0,entry.wakeupTime||'NR',entry.scores?.wakeup??0,entry.chantingTime||'NR',entry.scores?.chanting??0,entry.morningProgramTime||'NR',entry.scores?.morningProgram??0,entry.daySleepMinutes!=='NR'?entry.daySleepMinutes:'NR',entry.scores?.daySleep??0,entry.readingMinutes!=='NR'?entry.readingMinutes:'NR',entry.scores?.reading??0,entry.hearingMinutes!=='NR'?entry.hearingMinutes:'NR',entry.scores?.hearing??0,entry.notesMinutes!=='NR'?entry.notesMinutes:'NR',entry.scores?.notes??0,(entry.dayPercent??0)+'%']);
+                }
+                const adjNotes = wt.notesMins >= 245 ? 175 : wt.notesM;
+                const adjTotal = wt.total - wt.notesM + adjNotes;
+                dataArray.push(['Total/1225','',wt.sleepM,'',wt.wakeupM,'',wt.chantingM,'',wt.morningProgramM,'',wt.daySleepM,wt.readingMins,wt.readingM,wt.hearingMins,wt.hearingM,wt.notesMins,adjNotes,'']);
+                dataArray.push(['OVERALL',Math.round((adjTotal/1225)*100)+'%']);
+                if (wi < sortedWeeks.length - 1) dataArray.push([],[]);
+            });
+            const ws1 = XLSX.utils.aoa_to_sheet(dataArray);
+            XLSX.utils.book_append_sheet(wb, ws1, 'Sadhna');
+        }
+
+        // ── Sheet 2: Tapah ──
+        if (!tapahSnap.empty) {
+            const header = ['Date',...ANUKUL_QUESTIONS.map(q=>q.label),...PRATIKUL_QUESTIONS.map(q=>q.label),'Anukul Total','Pratikul Total','Total /50','Percent'];
+            const rows = [header];
+            const docs2 = [];
+            tapahSnap.forEach(doc => docs2.push({ id: doc.id, ...doc.data() }));
+            docs2.sort((a,b) => b.id.localeCompare(a.id));
+            docs2.forEach(d => {
+                rows.push([d.id,...ANUKUL_QUESTIONS.map(q=>d.anukul?.[q.id]||'no'),...PRATIKUL_QUESTIONS.map(q=>d.pratikul?.[q.id]||'no'),d.anukulTotal??0,d.pratikulTotal??0,d.totalScore??0,(d.percent??0)+'%']);
+            });
+            const ws2 = XLSX.utils.aoa_to_sheet(rows);
+            XLSX.utils.book_append_sheet(wb, ws2, 'Tapah');
+        }
+
+        // ── Sheet 3: Tapah-2 ──
+        if (!tapah2Snap.empty) {
+            const header = ['Date',...TAPAH2_QUESTIONS.map(q=>`${q.catLabel}|${q.label}(max${q.max})`),...TAPAH2_CATS.map(c=>`${c.label} Total`),'Total Score','Percent'];
+            const rows = [header];
+            const docs3 = [];
+            tapah2Snap.forEach(doc => docs3.push({ id: doc.id, ...doc.data() }));
+            docs3.sort((a,b) => b.id.localeCompare(a.id));
+            docs3.forEach(d => {
+                const catTotals = TAPAH2_CATS.map(cat => TAPAH2_QUESTIONS.filter(q=>q.cat===cat.id).reduce((s,q)=>s+(d.scores?.[q.id]||0),0));
+                rows.push([d.id,...TAPAH2_QUESTIONS.map(q=>d.scores?.[q.id]??0),...catTotals,d.totalScore??0,(d.percent??0)+'%']);
+            });
+            const ws3 = XLSX.utils.aoa_to_sheet(rows);
+            XLSX.utils.book_append_sheet(wb, ws3, 'Tapah-2');
+        }
+
+        if (wb.SheetNames.length === 0) { alert('No data found across any tab.'); return; }
+        XLSX.writeFile(wb, `${userProfile?.name || 'My'}_Master_Sadhana.xlsx`);
+    } catch (err) {
+        alert('Could not download master Excel. Error: ' + (err.code || err.message));
+    }
+};
+
 // --- 4. UI NAVIGATION ---
 function showSection(section) {
     ['auth', 'profile', 'dashboard'].forEach(s => {
@@ -482,6 +890,7 @@ window.switchSubTab = (parent, sub) => {
     }
     if (parent === 'sadhna'  && sub === 'progress' && currentUser) generateCharts();
     if (parent === 'tapah'   && sub === 'reports'  && currentUser) loadTapahReport();
+    if (parent === 'tapah'   && sub === 'progress' && currentUser) loadTapahProgress();
     if (parent === 'tapah2'  && sub === 'reports'  && currentUser) loadTapah2Report();
     if (parent === 'tapah2'  && sub === 'progress' && currentUser) loadTapah2Progress();
 };
@@ -2047,6 +2456,7 @@ function getPratikulScore(val) { return val === 'yes' ? -5 : val === 'partial' ?
 
 let tapahEditingDate = null;
 let _tapahAnswers = {};
+let _tapahChart = null;
 
 // Flat list of all questions with section tag
 const ALL_TAPAH_QUESTIONS = [
@@ -2059,44 +2469,109 @@ let _flashCardIndex = 0; // current card index (0–9)
 function resetTapahForm() {
     _tapahAnswers = {};
     _flashCardIndex = 0;
-    _tapahAnswering = false; // clear any pending debounce on reset
+    _tapahAnswering = false;
+    tapahEditingDate = null;
     setupTapahDateSelect();
-    const sel = document.getElementById('tapah-date');
-    if (sel) sel.disabled = false;
     const banner = document.getElementById('tapah-edit-banner');
     if (banner) banner.style.display = 'none';
-    tapahEditingDate = null;
     const submitBtn = document.getElementById('tapah-submit-btn');
     if (submitBtn) submitBtn.style.display = 'none';
     const doneScreen = document.getElementById('tapah-done-screen');
     if (doneScreen) doneScreen.style.display = 'none';
     const card = document.getElementById('tapah-card');
-    if (card) {
-        card.style.display = 'block';
-        card.style.opacity = '1';
-        card.style.transform = 'none';
-        card.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
-    }
+    if (card) { card.style.display = 'block'; card.style.opacity = '1'; card.style.transform = 'none'; card.style.transition = 'opacity 0.2s ease, transform 0.2s ease'; }
     renderFlashCard(0);
     updateTapahTotals();
 }
 
-window.cancelTapahEdit = () => resetTapahForm();
+window.cancelTapahEdit = () => {
+    resetTapahForm();
+    // Badge back to today
+    const todayStr = toLocalDateStr(new Date());
+    const badge = document.getElementById('tapah-date-status');
+    const hint  = document.getElementById('tapah-date-hint');
+    if (badge) { badge.textContent = '📆 Today'; badge.style.background = '#e8f0fe'; badge.style.color = '#3498db'; }
+    if (hint)  hint.textContent = 'Filling today\'s entry';
+};
 
 function setupTapahDateSelect() {
     const s = document.getElementById('tapah-date');
     if (!s) return;
-    s.innerHTML = '';
-    for (let i = 0; i < 5; i++) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        const iso = toLocalDateStr(d);
-        const opt = document.createElement('option');
-        opt.value = iso;
-        opt.textContent = i === 0 ? `Today (${iso})` : i === 1 ? `Yesterday (${iso})` : iso;
-        s.appendChild(opt);
+    const todayStr = toLocalDateStr(new Date());
+    s.min = APP_START_DATE;
+    s.max = todayStr;
+    s.value = todayStr;
+    s.disabled = false;
+    updateTapahDateStatus(todayStr);
+}
+
+function updateTapahDateStatus(dateStr) {
+    const badge  = document.getElementById('tapah-date-status');
+    const hint   = document.getElementById('tapah-date-hint');
+    if (!badge) return;
+    const todayStr = toLocalDateStr(new Date());
+    if (!dateStr) { badge.textContent = '—'; badge.style.background = '#f0f0f0'; badge.style.color = '#888'; return; }
+    if (dateStr === todayStr) {
+        badge.textContent = '📆 Today';
+        badge.style.background = '#e8f0fe'; badge.style.color = '#3498db';
+        if (hint) hint.textContent = 'Filling today\'s entry';
+    } else {
+        badge.textContent = '⏳ Checking…';
+        badge.style.background = '#f0f0f0'; badge.style.color = '#888';
     }
 }
+
+window.onTapahDateChange = async (dateStr) => {
+    if (!dateStr || !currentUser) return;
+    const badge = document.getElementById('tapah-date-status');
+    const hint  = document.getElementById('tapah-date-hint');
+    const todayStr = toLocalDateStr(new Date());
+
+    // Reset form state (keep date)
+    _tapahAnswers = {};
+    _flashCardIndex = 0;
+    _tapahAnswering = false;
+    tapahEditingDate = null;
+    const banner = document.getElementById('tapah-edit-banner');
+    if (banner) banner.style.display = 'none';
+    const card = document.getElementById('tapah-card');
+    if (card) { card.style.display = 'block'; card.style.opacity = '1'; card.style.transform = 'none'; }
+    const doneScreen = document.getElementById('tapah-done-screen');
+    if (doneScreen) doneScreen.style.display = 'none';
+    const submitBtn = document.getElementById('tapah-submit-btn');
+    if (submitBtn) submitBtn.style.display = 'none';
+
+    if (badge) { badge.textContent = '⏳'; badge.style.background = '#f0f0f0'; badge.style.color = '#888'; }
+
+    try {
+        const snap = await db.collection('users').doc(currentUser.uid).collection('tapah').doc(dateStr).get();
+        if (snap.exists) {
+            const d = snap.data();
+            restoreTapahButtons(d.anukul || {}, d.pratikul || {});
+            tapahEditingDate = dateStr;
+            const bannerText = document.getElementById('tapah-edit-banner-text');
+            if (banner) banner.style.display = 'flex';
+            if (bannerText) bannerText.textContent = `Editing Tapah: ${dateStr}`;
+            if (badge) { badge.textContent = '✅ Filled'; badge.style.background = '#e8f8f0'; badge.style.color = '#27ae60'; }
+            if (hint) hint.textContent = 'Entry exists — editing it now';
+        } else {
+            if (badge) {
+                if (dateStr === todayStr) {
+                    badge.textContent = '📆 Today'; badge.style.background = '#e8f0fe'; badge.style.color = '#3498db';
+                    if (hint) hint.textContent = 'New entry for today';
+                } else {
+                    badge.textContent = '⚠️ NR'; badge.style.background = '#fff3cd'; badge.style.color = '#856404';
+                    if (hint) hint.textContent = 'No entry yet — filling now';
+                }
+            }
+        }
+    } catch (err) {
+        if (badge) { badge.textContent = '❌ Error'; badge.style.background = '#fde8e8'; badge.style.color = '#e74c3c'; }
+        if (hint) hint.textContent = err.code || err.message;
+    }
+    renderFlashCard(0);
+    updateTapahTotals();
+};
 
 function renderFlashCard(idx) {
     const total = ALL_TAPAH_QUESTIONS.length;
@@ -2283,43 +2758,13 @@ function restoreTapahButtons(anukulAnswers, pratikulAnswers) {
     renderFlashCard(_flashCardIndex);
 }
 
-// Edit a past Tapah entry
+// Edit a past Tapah entry (called from report edit buttons)
 window.editTapahEntry = async (dateStr) => {
-    document.querySelectorAll('.tab-content').forEach(el => { el.classList.remove('active'); el.classList.add('hidden'); });
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    const tab = document.getElementById('tapah-tab');
-    if (tab) { tab.classList.remove('hidden'); tab.classList.add('active'); }
-    const btn = document.querySelector(`button[onclick*="switchTab('tapah')"]`);
-    if (btn) btn.classList.add('active');
-
-    resetTapahForm();
-
-    const snap = await db.collection('users').doc(currentUser.uid).collection('tapah').doc(dateStr).get();
-    if (snap.exists) {
-        const d = snap.data();
-        restoreTapahButtons(d.anukul || {}, d.pratikul || {});
-    }
-
+    switchMainTab('tapah');
+    switchSubTab('tapah', 'entry');
     const sel = document.getElementById('tapah-date');
-    let found = false;
-    if (sel) {
-        for (const opt of sel.options) { if (opt.value === dateStr) { opt.selected = true; found = true; break; } }
-        if (!found) {
-            const opt = document.createElement('option');
-            opt.value = dateStr; opt.textContent = dateStr;
-            sel.insertBefore(opt, sel.firstChild);
-            sel.value = dateStr;
-        }
-        sel.disabled = true;
-    }
-
-    tapahEditingDate = dateStr;
-    const banner = document.getElementById('tapah-edit-banner');
-    const bannerText = document.getElementById('tapah-edit-banner-text');
-    if (banner) banner.style.display = 'flex';
-    if (bannerText) bannerText.textContent = `Editing Tapah: ${dateStr}`;
-    const editSubmitBtn = document.getElementById('tapah-submit-btn');
-    if (editSubmitBtn) { editSubmitBtn.style.display = 'none'; editSubmitBtn.textContent = '💾 Update Tapah'; }
+    if (sel) { sel.value = dateStr; sel.disabled = false; }
+    await onTapahDateChange(dateStr);
     window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
@@ -2429,31 +2874,94 @@ const TAPAH2_MAX = TAPAH2_QUESTIONS.reduce((s, q) => s + q.max, 0); // 5+5+4+5+1
 let _tapah2Index     = 0;
 let _tapah2Scores    = {}; // { questionId: number }
 let _tapah2EditingDate = null;
-let _tapah2Advancing = false; // debounce for auto-advance on binary cards
+// (no binary auto-advance — all questions use numeric input)
 let _tapah2Chart     = null;
 
 function setupTapah2DateSelect() {
     const s = document.getElementById('tapah2-date');
     if (!s) return;
-    s.innerHTML = '';
-    for (let i = 0; i < 5; i++) {
-        const d = new Date(); d.setDate(d.getDate() - i);
-        const iso = toLocalDateStr(d);
-        const opt = document.createElement('option');
-        opt.value = iso;
-        opt.textContent = i === 0 ? `Today (${iso})` : i === 1 ? `Yesterday (${iso})` : iso;
-        s.appendChild(opt);
+    const todayStr = toLocalDateStr(new Date());
+    s.min = APP_START_DATE;
+    s.max = todayStr;
+    s.value = todayStr;
+    s.disabled = false;
+    updateTapah2DateStatus(todayStr);
+}
+
+function updateTapah2DateStatus(dateStr) {
+    const badge = document.getElementById('tapah2-date-status');
+    const hint  = document.getElementById('tapah2-date-hint');
+    if (!badge) return;
+    const todayStr = toLocalDateStr(new Date());
+    if (!dateStr) { badge.textContent = '—'; badge.style.background = '#f0f0f0'; badge.style.color = '#888'; return; }
+    if (dateStr === todayStr) {
+        badge.textContent = '📆 Today';
+        badge.style.background = '#fef0e7'; badge.style.color = '#e67e22';
+        if (hint) hint.textContent = 'Filling today\'s entry';
+    } else {
+        badge.textContent = '⏳ Checking…';
+        badge.style.background = '#f0f0f0'; badge.style.color = '#888';
     }
 }
+
+window.onTapah2DateChange = async (dateStr) => {
+    if (!dateStr || !currentUser) return;
+    const badge = document.getElementById('tapah2-date-status');
+    const hint  = document.getElementById('tapah2-date-hint');
+    const todayStr = toLocalDateStr(new Date());
+
+    // Reset state (keep date)
+    _tapah2Scores = {};
+    _tapah2Index  = 0;
+    _tapah2EditingDate = null;
+    const banner  = document.getElementById('tapah2-edit-banner');
+    const submit  = document.getElementById('tapah2-submit-btn');
+    const done    = document.getElementById('tapah2-done-screen');
+    const card    = document.getElementById('tapah2-card');
+    if (banner) banner.style.display = 'none';
+    if (submit) submit.style.display = 'none';
+    if (done)   done.style.display   = 'none';
+    if (card)   { card.style.display = 'block'; card.style.opacity = '1'; card.style.transform = 'none'; }
+
+    if (badge) { badge.textContent = '⏳'; badge.style.background = '#f0f0f0'; badge.style.color = '#888'; }
+
+    try {
+        const snap = await db.collection('users').doc(currentUser.uid).collection('tapah2').doc(dateStr).get();
+        if (snap.exists) {
+            const d = snap.data();
+            TAPAH2_QUESTIONS.forEach(q => {
+                if (d.scores && d.scores[q.id] !== undefined) _tapah2Scores[q.id] = d.scores[q.id];
+            });
+            _tapah2EditingDate = dateStr;
+            const bannerText = document.getElementById('tapah2-edit-banner-text');
+            if (banner) banner.style.display = 'flex';
+            if (bannerText) bannerText.textContent = `Editing Tapah-2: ${dateStr}`;
+            if (badge) { badge.textContent = '✅ Filled'; badge.style.background = '#e8f8f0'; badge.style.color = '#27ae60'; }
+            if (hint) hint.textContent = 'Entry exists — editing it now';
+        } else {
+            if (badge) {
+                if (dateStr === todayStr) {
+                    badge.textContent = '📆 Today'; badge.style.background = '#fef0e7'; badge.style.color = '#e67e22';
+                    if (hint) hint.textContent = 'New entry for today';
+                } else {
+                    badge.textContent = '⚠️ NR'; badge.style.background = '#fff3cd'; badge.style.color = '#856404';
+                    if (hint) hint.textContent = 'No entry yet — filling now';
+                }
+            }
+        }
+    } catch (err) {
+        if (badge) { badge.textContent = '❌ Error'; badge.style.background = '#fde8e8'; badge.style.color = '#e74c3c'; }
+        if (hint) hint.textContent = err.code || err.message;
+    }
+    renderTapah2Card(0);
+    updateTapah2Totals();
+};
 
 function resetTapah2Form() {
     _tapah2Scores      = {};
     _tapah2Index       = 0;
     _tapah2EditingDate = null;
-    _tapah2Advancing   = false;
     setupTapah2DateSelect();
-    const sel = document.getElementById('tapah2-date');
-    if (sel) sel.disabled = false;
     const banner  = document.getElementById('tapah2-edit-banner');
     const submit  = document.getElementById('tapah2-submit-btn');
     const done    = document.getElementById('tapah2-done-screen');
@@ -2466,7 +2974,13 @@ function resetTapah2Form() {
     updateTapah2Totals();
 }
 
-window.cancelTapah2Edit = () => resetTapah2Form();
+window.cancelTapah2Edit = () => {
+    resetTapah2Form();
+    const badge = document.getElementById('tapah2-date-status');
+    const hint  = document.getElementById('tapah2-date-hint');
+    if (badge) { badge.textContent = '📆 Today'; badge.style.background = '#fef0e7'; badge.style.color = '#e67e22'; }
+    if (hint)  hint.textContent = 'Filling today\'s entry';
+};
 
 // ── Card renderer ──────────────────────────────
 function renderTapah2Card(idx) {
@@ -2496,65 +3010,29 @@ function renderTapah2Card(idx) {
     const qText = `<div style="font-size:17px;font-weight:700;color:#2c3e50;margin-bottom:5px;line-height:1.4;">${q.label}</div>
     <div style="font-size:12px;color:#aaa;margin-bottom:18px;">Max: ${q.max} mark${q.max > 1 ? 's' : ''}</div>`;
 
-    const backBtn = `<button type="button" onclick="tapah2CardBack()"
-        style="width:100%;padding:10px;border-radius:10px;border:2px solid #ddd;background:#f8f9fa;color:#555;font-weight:600;font-size:13px;margin:0;cursor:pointer;margin-top:10px;">
-        ← Back
-    </button>`;
-
-    if (q.max === 1) {
-        // Binary: Yes (1) / No (0) with auto-advance
-        const yesActive = existing === 1;
-        const noActive  = existing === 0;
-        const yesSt = yesActive
-            ? 'border:2px solid #27ae60;background:#e8f8f0;color:#27ae60;'
-            : 'border:2px solid #ddd;background:#f8f9fa;color:#555;';
-        const noSt  = noActive
-            ? 'border:2px solid #e74c3c;background:#fde8e8;color:#e74c3c;'
-            : 'border:2px solid #ddd;background:#f8f9fa;color:#555;';
-        const flashHtml = existing !== undefined
-            ? `<span style="color:${existing === 1 ? '#27ae60' : '#e74c3c'};">${existing === 1 ? '✅ +1 mark' : '❌ 0 marks'}</span>`
-            : '';
-
-        card.innerHTML = `<div style="padding:18px 20px 16px;">
-            ${badge}${qText}
-            <div style="display:flex;gap:12px;margin-bottom:10px;">
-                <button id="tapah2-btn-yes" type="button" onclick="tapah2SetMark(1)"
-                    style="flex:1;padding:18px 8px;border-radius:12px;${yesSt}font-weight:700;font-size:15px;width:auto;margin:0;cursor:pointer;transition:all 0.15s;">
-                    ✅ Yes
-                </button>
-                <button id="tapah2-btn-no" type="button" onclick="tapah2SetMark(0)"
-                    style="flex:1;padding:18px 8px;border-radius:12px;${noSt}font-weight:700;font-size:15px;width:auto;margin:0;cursor:pointer;transition:all 0.15s;">
-                    ❌ No
-                </button>
-            </div>
-            <div id="tapah2-score-flash" style="text-align:center;height:22px;font-size:13px;font-weight:700;">${flashHtml}</div>
-            ${backBtn}
-        </div>`;
-    } else {
-        // Numeric: number input + manual Next button
-        card.innerHTML = `<div style="padding:18px 20px 16px;">
-            ${badge}${qText}
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
-                <label style="font-size:13px;font-weight:700;color:#2c3e50;white-space:nowrap;">Your Marks:</label>
-                <input type="number" id="tapah2-score-input" min="0" max="${q.max}"
-                    placeholder="0" value="${existing !== undefined ? existing : ''}"
-                    style="flex:1;padding:11px 14px;border:2px solid #e67e22;border-radius:10px;font-size:22px;font-weight:800;text-align:center;background:#fef9f5;color:#e67e22;width:auto;margin:0;"
-                    oninput="updateTapah2Totals()" onkeydown="if(event.key==='Enter')tapah2CardNext()">
-                <span style="font-size:15px;color:#aaa;font-weight:700;white-space:nowrap;">/ ${q.max}</span>
-            </div>
-            <div style="display:flex;gap:10px;">
-                <button type="button" onclick="tapah2CardBack()"
-                    style="flex:1;padding:12px;border-radius:10px;border:2px solid #ddd;background:#f8f9fa;color:#555;font-weight:700;font-size:13px;width:auto;margin:0;cursor:pointer;">
-                    ← Back
-                </button>
-                <button type="button" onclick="tapah2CardNext()"
-                    style="flex:2;padding:12px;border-radius:10px;border:none;background:#e67e22;color:white;font-weight:700;font-size:14px;width:auto;margin:0;cursor:pointer;">
-                    ${isLast ? '✅ Done' : 'Next →'}
-                </button>
-            </div>
-        </div>`;
-        setTimeout(() => { const inp = document.getElementById('tapah2-score-input'); if (inp) { inp.focus(); inp.select(); } }, 250);
-    }
+    // All questions: numeric input + manual Next
+    card.innerHTML = `<div style="padding:18px 20px 16px;">
+        ${badge}${qText}
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+            <label style="font-size:13px;font-weight:700;color:#2c3e50;white-space:nowrap;">Your Marks:</label>
+            <input type="number" id="tapah2-score-input" min="0" max="${q.max}"
+                placeholder="0" value="${existing !== undefined ? existing : ''}"
+                style="flex:1;padding:11px 14px;border:2px solid #e67e22;border-radius:10px;font-size:22px;font-weight:800;text-align:center;background:#fef9f5;color:#e67e22;width:auto;margin:0;"
+                oninput="updateTapah2Totals()" onkeydown="if(event.key==='Enter')tapah2CardNext()">
+            <span style="font-size:15px;color:#aaa;font-weight:700;white-space:nowrap;">/ ${q.max}</span>
+        </div>
+        <div style="display:flex;gap:10px;">
+            <button type="button" onclick="tapah2CardBack()"
+                style="flex:1;padding:12px;border-radius:10px;border:2px solid #ddd;background:#f8f9fa;color:#555;font-weight:700;font-size:13px;width:auto;margin:0;cursor:pointer;">
+                ← Back
+            </button>
+            <button type="button" onclick="tapah2CardNext()"
+                style="flex:2;padding:12px;border-radius:10px;border:none;background:#e67e22;color:white;font-weight:700;font-size:14px;width:auto;margin:0;cursor:pointer;">
+                ${isLast ? '✅ Done' : 'Next →'}
+            </button>
+        </div>
+    </div>`;
+    setTimeout(() => { const inp = document.getElementById('tapah2-score-input'); if (inp) { inp.focus(); inp.select(); } }, 250);
 }
 
 // ── Slide animation helper ──────────────────────
@@ -2580,28 +3058,10 @@ function tapah2Animate(targetIdx, direction) {
     }, 220);
 }
 
-// ── Binary answer (max=1 cards) ─────────────────
-window.tapah2SetMark = (val) => {
-    if (_tapah2Advancing) return;
-    const q = TAPAH2_QUESTIONS[_tapah2Index];
-    if (!q) return;
-    _tapah2Scores[q.id] = val;
-    updateTapah2Totals();
-    renderTapah2Card(_tapah2Index); // re-render to show selection highlight
-
-    _tapah2Advancing = true;
-    setTimeout(() => {
-        _tapah2Advancing = false;
-        const next = _tapah2Index + 1;
-        if (next < TAPAH2_QUESTIONS.length) tapah2Animate(next, 'forward');
-        else showTapah2DoneScreen();
-    }, 500);
-};
-
 // ── Next / Back navigation ──────────────────────
 window.tapah2CardNext = () => {
     const q = TAPAH2_QUESTIONS[_tapah2Index];
-    if (q && q.max > 1) {
+    if (q) {
         const inp = document.getElementById('tapah2-score-input');
         if (inp) {
             const raw = parseInt(inp.value, 10);
@@ -2616,7 +3076,7 @@ window.tapah2CardNext = () => {
 window.tapah2CardBack = () => {
     if (_tapah2Index === 0) return;
     const q = TAPAH2_QUESTIONS[_tapah2Index];
-    if (q && q.max > 1) {
+    if (q) {
         const inp = document.getElementById('tapah2-score-input');
         if (inp) {
             const raw = parseInt(inp.value, 10);
@@ -2628,9 +3088,9 @@ window.tapah2CardBack = () => {
 
 // ── Live totals & mini-badges ───────────────────
 function updateTapah2Totals() {
-    // Persist numeric input value if current card is numeric
+    // Persist numeric input value
     const q = TAPAH2_QUESTIONS[_tapah2Index];
-    if (q && q.max > 1) {
+    if (q) {
         const inp = document.getElementById('tapah2-score-input');
         if (inp && inp.value !== '') {
             const raw = parseInt(inp.value, 10);
@@ -2733,43 +3193,17 @@ window.submitTapah2 = async () => {
         alert(`${isEdit ? 'Updated' : 'Saved'}! Tapah-2 Score: ${total}/${TAPAH2_MAX} (${percent}%)`);
         resetTapah2Form();
     } catch (err) {
-        alert('Could not save Tapah-2. Please check your internet and try again.');
+        alert('Could not save Tapah-2.\nError: ' + (err.code || err.message));
     }
 };
 
-// ── Edit past entry ─────────────────────────────
+// ── Edit past entry (called from report edit buttons) ───
 window.editTapah2Entry = async (dateStr) => {
     switchMainTab('tapah2');
-    resetTapah2Form();
-    try {
-        const snap = await db.collection('users').doc(currentUser.uid).collection('tapah2').doc(dateStr).get();
-        if (snap.exists) {
-            const d = snap.data();
-            TAPAH2_QUESTIONS.forEach(q => {
-                if (d.scores && d.scores[q.id] !== undefined) _tapah2Scores[q.id] = d.scores[q.id];
-            });
-        }
-    } catch (err) { alert('Could not load entry: ' + err.message); return; }
-
+    switchSubTab('tapah2', 'entry');
     const sel = document.getElementById('tapah2-date');
-    if (sel) {
-        let found = false;
-        for (const opt of sel.options) { if (opt.value === dateStr) { opt.selected = true; found = true; break; } }
-        if (!found) {
-            const opt = document.createElement('option');
-            opt.value = dateStr; opt.textContent = dateStr;
-            sel.insertBefore(opt, sel.firstChild);
-            sel.value = dateStr;
-        }
-        sel.disabled = true;
-    }
-    _tapah2EditingDate = dateStr;
-    const banner     = document.getElementById('tapah2-edit-banner');
-    const bannerText = document.getElementById('tapah2-edit-banner-text');
-    if (banner)     banner.style.display = 'flex';
-    if (bannerText) bannerText.textContent = `Editing Tapah-2: ${dateStr}`;
-    renderTapah2Card(0);
-    updateTapah2Totals();
+    if (sel) { sel.value = dateStr; sel.disabled = false; }
+    await onTapah2DateChange(dateStr);
     window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
@@ -2792,12 +3226,18 @@ async function loadTapah2Report() {
         const allData = {};
         snap.forEach(doc => { allData[doc.id] = doc.data(); });
         window._tapah2AllData = allData;
+        // Auto-expand current month + week so marks are visible immediately
+        const _today = new Date();
+        const _sun   = new Date(_today); _sun.setDate(_today.getDate() - _today.getDay());
+        _tapah2Expanded.add('month_' + toLocalDateStr(_sun).slice(0, 7));
+        _tapah2Expanded.add('week_'  + toLocalDateStr(_sun));
         renderTapah2Report(allData);
     } catch (err) {
         container.innerHTML = `<div style="text-align:center;padding:30px;background:#fff0f0;border-radius:10px;color:#e74c3c;">
             <div style="font-size:24px;margin-bottom:8px;">⚠️</div>
             <div style="font-weight:700;">Could not load Tapah-2 data</div>
-            <div style="font-size:13px;color:#666;margin:6px 0 14px;">Check your internet connection.</div>
+            <div style="font-size:13px;color:#666;margin:6px 0 6px;">Check your internet connection.</div>
+            <div style="font-size:11px;color:#aaa;margin-bottom:14px;font-family:monospace;">${err.code || err.message}</div>
             <button onclick="loadTapah2Report()" style="padding:8px 20px;background:#3498db;color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer;width:auto;">🔄 Retry</button>
         </div>`;
     }
@@ -2971,15 +3411,12 @@ async function loadTapah2Progress() {
     const today       = new Date();
     const todayStr    = toLocalDateStr(today);
     const thisWeekSun = new Date(today); thisWeekSun.setDate(today.getDate() - today.getDay());
-    const from28      = new Date(today); from28.setDate(today.getDate() - 27);
 
     try {
-        const snap = await db.collection('users').doc(currentUser.uid).collection('tapah2')
-            .where(firebase.firestore.FieldPath.documentId(), '>=', toLocalDateStr(from28))
-            .where(firebase.firestore.FieldPath.documentId(), '<=', todayStr)
-            .get();
-        const data = {};
-        snap.forEach(doc => { data[doc.id] = doc.data(); });
+        // Fetch ALL tapah2 data (no range query — avoids index issues)
+        const snap = await db.collection('users').doc(currentUser.uid).collection('tapah2').get();
+        const allData = {};
+        snap.forEach(doc => { allData[doc.id] = doc.data(); });
 
         // Current week ring
         const weekDates = [];
@@ -2988,8 +3425,8 @@ async function loadTapah2Progress() {
             const ds = toLocalDateStr(d);
             if (ds <= todayStr && ds >= APP_START_DATE) weekDates.push(ds);
         }
-        const filled    = weekDates.filter(d => data[d]);
-        const wTotal    = filled.reduce((s,d) => s+(data[d]?.totalScore||0), 0);
+        const filled    = weekDates.filter(d => allData[d]);
+        const wTotal    = filled.reduce((s,d) => s+(allData[d]?.totalScore||0), 0);
         const wMax      = filled.length * TAPAH2_MAX;
         const wPct      = wMax > 0 ? Math.round(wTotal/wMax*100) : 0;
         const ringColor = wPct >= 70 ? '#27ae60' : wPct >= 50 ? '#f39c12' : '#e74c3c';
@@ -2999,18 +3436,18 @@ async function loadTapah2Progress() {
 
         const catRows = TAPAH2_CATS.map(cat => {
             const cm    = TAPAH2_QUESTIONS.filter(q=>q.cat===cat.id).reduce((s,q)=>s+q.max,0);
-            const cFill = filled.length;
             const cTot  = filled.reduce((s,d) => {
                 const catQs = TAPAH2_QUESTIONS.filter(q=>q.cat===cat.id);
-                return s + catQs.reduce((ss,q) => ss+(data[d]?.scores?.[q.id]||0), 0);
+                return s + catQs.reduce((ss,q) => ss+(allData[d]?.scores?.[q.id]||0), 0);
             }, 0);
-            const cMax  = cFill * cm;
+            const cMax  = filled.length * cm;
             const cp    = cMax > 0 ? Math.round(cTot/cMax*100) : 0;
             const cc    = cp >= 70 ? '#27ae60' : cp >= 50 ? '#f39c12' : '#e74c3c';
             return `<div style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:12px;">
                 <span style="font-size:14px;">${cat.emoji}</span>
                 <span style="flex:1;color:#555;">${cat.label}</span>
-                <span style="font-weight:700;color:${cc};">${cTot}/${cMax}</span>
+                <span style="font-size:10px;color:#aaa;white-space:nowrap;">max ${cm}/day</span>
+                <span style="font-weight:700;color:${cc};min-width:36px;text-align:right;">${cTot}/${cMax||'—'}</span>
             </div>`;
         }).join('');
 
@@ -3028,17 +3465,19 @@ async function loadTapah2Progress() {
             </div>
             <div style="flex:1;min-width:160px;">
                 <div style="font-weight:700;font-size:14px;color:#2c3e50;margin-bottom:6px;">📿 Tapah-2 — This Week</div>
-                <div style="font-size:12px;color:#666;margin-bottom:4px;">${filled.length} of ${weekDates.length} days filled</div>
-                <div style="font-size:15px;font-weight:700;color:${ringColor};margin-bottom:8px;">${wTotal} / ${wMax} pts</div>
+                <div style="font-size:12px;color:#666;margin-bottom:2px;">${filled.length} of ${weekDates.length} day(s) filled</div>
+                <div style="font-size:11px;color:#aaa;margin-bottom:6px;">Max ${TAPAH2_MAX} marks/day</div>
+                <div style="font-size:15px;font-weight:700;color:${ringColor};margin-bottom:8px;">${wTotal} / ${wMax||'—'} pts</div>
                 ${catRows}
             </div>
         </div>`;
 
-        // Line chart
+        // Line chart (last 28 days, filter from allData)
+        const from28Str = toLocalDateStr(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 27));
         const dates28   = [];
         for (let i=27;i>=0;i--) { const d=new Date(today);d.setDate(today.getDate()-i);const ds=toLocalDateStr(d);if(ds>=APP_START_DATE)dates28.push(ds); }
         const labels    = dates28.map(ds=>{const d=new Date(ds+'T00:00:00');return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;});
-        const chartData = dates28.map(ds => data[ds]?.totalScore ?? null);
+        const chartData = dates28.map(ds => allData[ds]?.totalScore ?? null);
 
         const canvas = document.getElementById('tapah2-score-chart');
         if (!canvas) return;
@@ -3050,7 +3489,7 @@ async function loadTapah2Progress() {
                 scales: { y: { beginAtZero: true, max: TAPAH2_MAX, grid: { color: 'rgba(0,0,0,0.06)' }, ticks: { stepSize: Math.ceil(TAPAH2_MAX/5) } }, x: { grid: { display: false }, ticks: { maxRotation: 45, font: { size: 10 } } } } }
         });
     } catch (err) {
-        if (ringEl) ringEl.innerHTML = `<div style="color:#e74c3c;padding:20px;text-align:center;">Error: ${err.message}</div>`;
+        if (ringEl) ringEl.innerHTML = `<div style="color:#e74c3c;padding:20px;text-align:center;">⚠️ Error loading Tapah-2 progress:<br><span style="font-size:12px;font-family:monospace;">${err.code || err.message}</span></div>`;
     }
 }
 
@@ -3284,6 +3723,102 @@ window.toggleTapahGroup = (key) => {
     renderTapahReport(window._tapahAllData || {});
 };
 
+// ── TAPAH PROGRESS ──────────────────────────────
+async function loadTapahProgress() {
+    const ringEl = document.getElementById('tapah-score-ring-container');
+    if (!ringEl) return;
+    ringEl.innerHTML = '<div style="text-align:center;color:#aaa;padding:20px;">Loading…</div>';
+
+    const today       = new Date();
+    const todayStr    = toLocalDateStr(today);
+    const thisWeekSun = new Date(today); thisWeekSun.setDate(today.getDate() - today.getDay());
+    const TAPAH_MAX   = 50;
+    const ANUKUL_MAX  = ANUKUL_QUESTIONS.length * 5;   // 5 × 5 = 25
+    const PRATIKUL_MAX = PRATIKUL_QUESTIONS.length * 5; // 5 × 5 = 25
+
+    try {
+        // Fetch ALL tapah data (no range query — avoids index issues)
+        const snap = await db.collection('users').doc(currentUser.uid).collection('tapah').get();
+        const allData = {};
+        snap.forEach(doc => { allData[doc.id] = doc.data(); });
+
+        // Filter last 28 days locally
+        const from28Str = toLocalDateStr(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 27));
+        const data = {};
+        Object.keys(allData).forEach(k => { if (k >= from28Str && k <= todayStr) data[k] = allData[k]; });
+
+        // Current week ring
+        const weekDates = [];
+        for (let i = 0; i < 7; i++) {
+            const d = new Date(thisWeekSun); d.setDate(thisWeekSun.getDate() + i);
+            const ds = toLocalDateStr(d);
+            if (ds <= todayStr && ds >= APP_START_DATE) weekDates.push(ds);
+        }
+        const filled     = weekDates.filter(d => allData[d]);
+        const wTotal     = filled.reduce((s, d) => s + (allData[d]?.totalScore || 0), 0);
+        const wMax       = weekDates.length * TAPAH_MAX;  // max = all elapsed days × 50
+        const wPct       = wMax > 0 ? Math.round(wTotal / wMax * 100) : 0;
+        const ringColor  = wPct >= 70 ? '#27ae60' : wPct >= 50 ? '#f39c12' : '#e74c3c';
+
+        const r = 54, circ = Math.round(2 * Math.PI * r);
+        const dash = Math.round(circ * Math.max(0, wPct) / 100);
+
+        const anukulTot    = filled.reduce((s, d) => s + (allData[d]?.anukulTotal   || 0), 0);
+        const pratikulTot  = filled.reduce((s, d) => s + (allData[d]?.pratikulTotal || 0), 0);
+        const anukulMax    = weekDates.length * ANUKUL_MAX;
+        const pratikulMax  = weekDates.length * PRATIKUL_MAX;
+        const mkColor = (got, max) => max > 0 ? (got/max >= 0.7 ? '#27ae60' : got/max >= 0.5 ? '#f39c12' : '#e74c3c') : '#aaa';
+
+        const secRows = [
+            { label: '🌿 Anukulasya (Favourable)',   got: anukulTot,   max: anukulMax,   perDay: ANUKUL_MAX   },
+            { label: '🚫 Pratikulasya (Unfavourable)', got: pratikulTot, max: pratikulMax, perDay: PRATIKUL_MAX },
+        ].map(sec => `<div style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12px;">
+            <span style="flex:1;color:#555;">${sec.label}</span>
+            <span style="font-size:10px;color:#aaa;white-space:nowrap;">max ${sec.perDay}/day</span>
+            <span style="font-weight:700;color:${mkColor(sec.got, sec.max)};min-width:42px;text-align:right;">${sec.got}/${sec.max || '—'}</span>
+        </div>`).join('');
+
+        ringEl.innerHTML = `<div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+            <div style="position:relative;flex-shrink:0;">
+                <svg width="130" height="130" style="transform:rotate(-90deg)">
+                    <circle cx="65" cy="65" r="${r}" fill="none" stroke="#e0e0e0" stroke-width="10"/>
+                    <circle cx="65" cy="65" r="${r}" fill="none" stroke="${ringColor}" stroke-width="10"
+                        stroke-dasharray="${dash} ${circ}" stroke-linecap="round"/>
+                </svg>
+                <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;">
+                    <div style="font-size:22px;font-weight:800;color:${ringColor};">${wPct}%</div>
+                    <div style="font-size:10px;color:#888;">This week</div>
+                </div>
+            </div>
+            <div style="flex:1;min-width:160px;">
+                <div style="font-weight:700;font-size:14px;color:#2c3e50;margin-bottom:6px;">🌿 Tapah — This Week</div>
+                <div style="font-size:12px;color:#666;margin-bottom:2px;">${filled.length} of ${weekDates.length} day(s) filled</div>
+                <div style="font-size:11px;color:#aaa;margin-bottom:6px;">Max ${TAPAH_MAX} marks/day</div>
+                <div style="font-size:15px;font-weight:700;color:${ringColor};margin-bottom:8px;">${wTotal} / ${wMax} pts</div>
+                ${secRows}
+            </div>
+        </div>`;
+
+        // Line chart (last 28 days)
+        const dates28   = [];
+        for (let i = 27; i >= 0; i--) { const d = new Date(today); d.setDate(today.getDate() - i); const ds = toLocalDateStr(d); if (ds >= APP_START_DATE) dates28.push(ds); }
+        const labels    = dates28.map(ds => { const d = new Date(ds + 'T00:00:00'); return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`; });
+        const chartData = dates28.map(ds => allData[ds]?.totalScore ?? null);
+
+        const canvas = document.getElementById('tapah-score-chart');
+        if (!canvas) return;
+        if (_tapahChart) { _tapahChart.destroy(); _tapahChart = null; }
+        _tapahChart = new Chart(canvas, {
+            type: 'line',
+            data: { labels, datasets: [{ label: 'Tapah', data: chartData, borderColor: '#764ba2', backgroundColor: 'rgba(118,75,162,0.08)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#764ba2', spanGaps: false, tension: 0.3 }] },
+            options: { responsive: true, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.y} / ${TAPAH_MAX}` } } },
+                scales: { y: { beginAtZero: true, max: TAPAH_MAX, grid: { color: 'rgba(0,0,0,0.06)' }, ticks: { stepSize: 10 } }, x: { grid: { display: false }, ticks: { maxRotation: 45, font: { size: 10 } } } } }
+        });
+    } catch (err) {
+        if (ringEl) ringEl.innerHTML = `<div style="color:#e74c3c;padding:20px;text-align:center;">⚠️ Error loading Tapah progress:<br><span style="font-size:12px;font-family:monospace;">${err.code || err.message}</span></div>`;
+    }
+}
+
 async function loadTapahReport() {
     const container = document.getElementById('tapah-report-container');
     if (!container) return;
@@ -3294,6 +3829,11 @@ async function loadTapahReport() {
         const allData = {};
         snap.forEach(doc => { allData[doc.id] = doc.data(); });
         window._tapahAllData = allData;
+        // Auto-expand current month + week
+        const _tn = new Date();
+        const _ts = new Date(_tn); _ts.setDate(_tn.getDate() - _tn.getDay());
+        _tapahExpanded.add('month_' + toLocalDateStr(_ts).slice(0, 7));
+        _tapahExpanded.add('week_'  + toLocalDateStr(_ts));
         renderTapahReport(allData);
     } catch (err) {
         container.innerHTML = `
@@ -3312,327 +3852,201 @@ function renderTapahReport(allData) {
     const container = document.getElementById('tapah-report-container');
     if (!container) return;
 
-    const today = new Date();
-    const todayStr = toLocalDateStr(today);
-
-    // Get current week Sunday
-    const thisWeekSun = new Date(today);
-    thisWeekSun.setDate(today.getDate() - today.getDay());
+    const today          = new Date();
+    const todayStr       = toLocalDateStr(today);
+    const thisWeekSun    = new Date(today); thisWeekSun.setDate(today.getDate() - today.getDay());
     const thisWeekSunStr = toLocalDateStr(thisWeekSun);
 
-    // All questions list
-    const allQuestions = [
-        ...ANUKUL_QUESTIONS.map(q => ({ ...q, section: 'anukul' })),
-        ...PRATIKUL_QUESTIONS.map(q => ({ ...q, section: 'pratikul' }))
-    ];
+    const TM  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const TML = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const fmtD = ds => { const d = new Date(ds+'T00:00:00'); return `${String(d.getDate()).padStart(2,'0')} ${TM[d.getMonth()]}`; };
+    const fmtM = ym => { const [y,m] = ym.split('-'); return `${TML[parseInt(m,10)-1]} ${y}`; };
+    const fmtW = sun => { const s = new Date(sun+'T00:00:00'); const e = new Date(s); e.setDate(s.getDate()+6); return `${fmtD(sun)} – ${fmtD(toLocalDateStr(e))}`; };
+    const sCol = pct => pct >= 70 ? '#27ae60' : pct >= 50 ? '#f39c12' : '#e74c3c';
 
-    // --- Build timeline: group dates into weeks, weeks into months ---
-    // Find all dates that have data OR are in the current week
-    const allDates = new Set(Object.keys(allData));
-
-    // Always include current week dates up to today
+    // Build date set — only actual data dates
+    const allDates = new Set(Object.keys(allData).filter(d => d >= APP_START_DATE));
+    // Also include current week dates up to today
     for (let i = 0; i < 7; i++) {
-        const d = new Date(thisWeekSun);
-        d.setDate(thisWeekSun.getDate() + i);
+        const d = new Date(thisWeekSun); d.setDate(thisWeekSun.getDate() + i);
         const ds = toLocalDateStr(d);
-        if (ds <= todayStr) allDates.add(ds);
+        if (ds <= todayStr && ds >= APP_START_DATE) allDates.add(ds);
     }
-
     if (allDates.size === 0) {
         container.innerHTML = '<p style="color:#aaa;text-align:center;padding:30px;">No Tapah data yet. Start tracking!</p>';
         return;
     }
 
-    // Group dates by week (Sun–Sat)
+    // Group into week → month
     const weekMap = {};
-    [...allDates].sort().forEach(dateStr => {
-        const d = new Date(dateStr + 'T00:00:00');
+    [...allDates].sort().forEach(ds => {
+        const d = new Date(ds+'T00:00:00');
         const sun = new Date(d); sun.setDate(d.getDate() - d.getDay());
         const sunStr = toLocalDateStr(sun);
         if (!weekMap[sunStr]) weekMap[sunStr] = [];
-        weekMap[sunStr].push(dateStr);
+        weekMap[sunStr].push(ds);
     });
-
-    // Group weeks by month
     const monthMap = {};
     Object.keys(weekMap).sort().forEach(sunStr => {
-        // Use the month of the majority of days in the week
-        const firstDay = weekMap[sunStr][0];
-        const monthKey = firstDay.slice(0, 7); // YYYY-MM
-        if (!monthMap[monthKey]) monthMap[monthKey] = [];
-        monthMap[monthKey].push(sunStr);
+        const mk = weekMap[sunStr][0].slice(0, 7);
+        if (!monthMap[mk]) monthMap[mk] = [];
+        monthMap[mk].push(sunStr);
     });
 
-    const sortedMonths = Object.keys(monthMap).sort();
-
-    // Helper: cell color based on answer
-    const cellColor = (val, section) => {
-        if (!val || val === 'nr') return '#f8f9fa';
-        if (val === 'yes')     return section === 'anukul' ? '#c8f7c5' : '#ffd5d5';
-        if (val === 'partial') return '#fff3cd';
-        if (val === 'no')      return section === 'anukul' ? '#ffd5d5' : '#c8f7c5';
-        return '#f8f9fa';
+    // Cell value helpers
+    const ansColor = (val, sec) => {
+        if (!val) return { bg: '#f8f9fa', tc: '#ccc' };
+        if (sec === 'anukul') {
+            if (val === 'yes')     return { bg: '#c8f7c5', tc: '#27ae60' };
+            if (val === 'partial') return { bg: '#fff3cd', tc: '#f39c12' };
+            return { bg: '#fde8e8', tc: '#e74c3c' };
+        } else {
+            if (val === 'yes')     return { bg: '#fde8e8', tc: '#e74c3c' };
+            if (val === 'partial') return { bg: '#fff3cd', tc: '#f39c12' };
+            return { bg: '#c8f7c5', tc: '#27ae60' };
+        }
     };
-    const cellTextColor = (val, section) => {
-        if (!val || val === 'nr') return '#aaa';
-        if (val === 'yes')     return section === 'anukul' ? '#27ae60' : '#e74c3c';
-        if (val === 'partial') return '#f39c12';
-        if (val === 'no')      return section === 'anukul' ? '#e74c3c' : '#27ae60';
-        return '#aaa';
-    };
-    const cellLabel = (val) => {
-        if (!val || val === 'nr') return '–';
-        if (val === 'yes') return 'Y';
-        if (val === 'partial') return 'P';
-        if (val === 'no') return 'N';
-        return '–';
-    };
-    // scoreLabel removed - was unused dead code
-
-    // Format date label: "01 Mar"
-    const _TAPAH_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const _TAPAH_MONTHS_LONG = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-    const fmtDate = (ds) => {
-        const d = new Date(ds + 'T00:00:00');
-        return `${String(d.getDate()).padStart(2,'0')} ${_TAPAH_MONTHS[d.getMonth()]}`;
-    };
-    const fmtMonth = (ym) => {
-        const [y, m] = ym.split('-');
-        return `${_TAPAH_MONTHS_LONG[parseInt(m,10)-1]} ${y}`;
-    };
-    const fmtWeek = (sunStr) => {
-        const sun = new Date(sunStr + 'T00:00:00');
-        const sat = new Date(sun); sat.setDate(sun.getDate() + 6);
-        return `${fmtDate(sunStr)} – ${fmtDate(toLocalDateStr(sat))}`;
+    const scoreLabel = (val, sec) => {
+        if (!val) return '–';
+        const sc = sec === 'anukul' ? getAanukulScore(val) : getPratikulScore(val);
+        const ans = val === 'yes' ? 'Y' : val === 'partial' ? 'P' : 'N';
+        return `${ans} <span style="font-size:10px;opacity:0.8;">(${sc>=0?'+':''}${sc})</span>`;
     };
 
-    // Score summary for a list of dates
-    const summarize = (dates) => {
-        const totals = {}; // qid → total score
-        let grandTotal = 0, maxPossible = 0;
-        allQuestions.forEach(q => { totals[q.id] = 0; });
-        dates.forEach(ds => {
-            const entry = allData[ds];
-            if (!entry) return;
-            maxPossible += 50;
-            grandTotal += entry.totalScore || 0;
-            allQuestions.forEach(q => {
-                const ans = entry[q.section]?.[q.id];
-                const sc = q.section === 'anukul' ? getAanukulScore(ans || 'no') : getPratikulScore(ans || 'no');
-                totals[q.id] += sc;
-            });
-        });
-        return { totals, grandTotal, maxPossible };
-    };
+    let html = '';
+    Object.keys(monthMap).sort().reverse().forEach(mk => {
+        const weeks = monthMap[mk].slice().reverse();
+        const mFilled = weeks.flatMap(w => weekMap[w]).filter(d => allData[d]);
+        const mTotal  = mFilled.reduce((s,d) => s+(allData[d]?.totalScore||0), 0);
+        const mMax    = mFilled.length * 50;
+        const mPct    = mMax > 0 ? Math.round(mTotal/mMax*100) : 0;
+        const mExpand = _tapahExpanded.has('month_'+mk);
 
-    // ---- BUILD HTML ----
-    // Fixed left columns: Sr, Particular, T-Dur
-    // Then dynamic columns based on expanded/collapsed state
+        html += `<div style="margin-bottom:10px;">
+            <div onclick="toggleTapahGroup('month_${mk}')"
+                style="background:#2c3e50;color:white;padding:12px 16px;border-radius:${mExpand?'8px 8px 0 0':'8px'};cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
+                <div style="font-weight:700;font-size:14px;">${fmtM(mk)}</div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <span style="font-size:13px;color:${sCol(mPct)};font-weight:700;">${mPct}%</span>
+                    <span style="font-size:11px;opacity:0.7;">${mExpand?'▼':'▶'}</span>
+                </div>
+            </div>`;
 
-    // Build column definitions
-    // Each column is either: { type:'day', date } | { type:'week', sunStr, dates } | { type:'month', monthKey, dates }
-    const columns = [];
-    const isCurrentWeek = (sunStr) => sunStr === thisWeekSunStr;
+        if (mExpand) {
+            html += `<div style="background:#f8f9fa;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 8px 8px;padding:8px;">`;
+            weeks.forEach(sunStr => {
+                const wDates  = weekMap[sunStr];
+                const wFilled = wDates.filter(d => allData[d]);
+                const wTotal  = wFilled.reduce((s,d) => s+(allData[d]?.totalScore||0), 0);
+                const wMax    = wFilled.length * 50;
+                const wPct    = wMax > 0 ? Math.round(wTotal/wMax*100) : 0;
+                const wExpand = _tapahExpanded.has('week_'+sunStr);
+                const isCur   = sunStr === thisWeekSunStr;
 
-    sortedMonths.forEach(monthKey => {
-        const weeksInMonth = monthMap[monthKey];
-        const monthDates = weeksInMonth.flatMap(w => weekMap[w]).filter(d => allData[d] || d <= todayStr);
-        const monthExpanded = _tapahExpanded.has('month_' + monthKey);
+                html += `<div style="margin-bottom:6px;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+                    <div onclick="toggleTapahGroup('week_${sunStr}')"
+                        style="background:white;padding:12px 16px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;border-left:4px solid #764ba2;">
+                        <div>
+                            <div style="font-weight:700;font-size:13px;color:#2c3e50;">${fmtW(sunStr)}${isCur?' <span style="font-size:10px;background:#764ba2;color:white;padding:1px 7px;border-radius:10px;margin-left:4px;">Current</span>':''}</div>
+                            <div style="font-size:11px;color:#888;margin-top:2px;">${wFilled.length} day(s) filled · ${wTotal}/${wMax} pts</div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <span style="font-size:15px;font-weight:700;color:${sCol(wPct)};">${wPct}%</span>
+                            <span style="font-size:11px;color:#aaa;">${wExpand?'▼':'▶'}</span>
+                        </div>
+                    </div>`;
 
-        if (monthExpanded) {
-            // Show each week inside this month
-            weeksInMonth.forEach(sunStr => {
-                const weekDates = weekMap[sunStr].filter(d => d <= todayStr);
-                const weekExpanded = _tapahExpanded.has('week_' + sunStr) || isCurrentWeek(sunStr);
-
-                if (weekExpanded) {
-                    // Show individual days
-                    weekDates.forEach(ds => {
-                        columns.push({ type: 'day', date: ds, parentWeek: sunStr, parentMonth: monthKey });
+                if (wExpand) {
+                    // Table: questions as rows, dates as columns
+                    const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+                    html += `<div style="overflow-x:auto;background:white;border-top:1px solid #f0f0f0;">
+                        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                            <thead><tr>
+                                <th style="padding:8px 10px;background:#f0eaf8;text-align:left;color:#2c3e50;font-weight:700;white-space:nowrap;min-width:200px;">Question</th>
+                                <th style="padding:8px 6px;background:#f0eaf8;text-align:center;color:#888;font-weight:600;white-space:nowrap;">Max</th>`;
+                    wDates.forEach(ds => {
+                        const d = new Date(ds+'T00:00:00');
+                        html += `<th style="padding:8px;background:#f0eaf8;text-align:center;color:#2c3e50;font-weight:600;white-space:nowrap;">${dayNames[d.getDay()]}<br><span style="font-weight:400;font-size:10px;">${fmtD(ds)}</span></th>`;
                     });
-                    // Week total column (collapsible back)
-                    columns.push({ type: 'weekTotal', sunStr, dates: weekDates, parentMonth: monthKey });
-                } else {
-                    // Show collapsed week column
-                    columns.push({ type: 'week', sunStr, dates: weekDates, parentMonth: monthKey });
+                    html += `<th style="padding:8px;background:#f0eaf8;text-align:center;color:#764ba2;font-weight:700;">Total</th></tr></thead><tbody>`;
+
+                    // Anukul section
+                    html += `<tr><td colspan="${3+wDates.length}" style="background:#e8f8f0;font-weight:700;color:#27ae60;padding:6px 10px;font-size:11px;letter-spacing:0.4px;">🌿 ANUKULASYA (Favourable) — max 5/day each</td></tr>`;
+                    ANUKUL_QUESTIONS.forEach((q, qi) => {
+                        const rowBg = qi % 2 === 0 ? '#fff' : '#fafafa';
+                        let rowTotal = 0;
+                        let cells = '';
+                        wDates.forEach(ds => {
+                            const entry = allData[ds];
+                            const val = entry?.anukul?.[q.id] || null;
+                            const sc = val ? getAanukulScore(val) : null;
+                            if (sc !== null) rowTotal += sc;
+                            const { bg, tc } = ansColor(val, 'anukul');
+                            cells += `<td style="padding:7px 4px;text-align:center;background:${rowBg};">
+                                ${entry ? `<span style="background:${bg};color:${tc};padding:2px 6px;border-radius:4px;font-weight:700;font-size:11px;white-space:nowrap;">${val==='yes'?'Y':val==='partial'?'P':val==='no'?'N':'–'} <span style="font-size:9px;">(${sc>=0?'+':''}${sc??'–'})</span></span>` : '<span style="color:#ccc;">–</span>'}
+                            </td>`;
+                        });
+                        const rowMax = wFilled.length * 5;
+                        const rPct = rowMax > 0 ? Math.round(rowTotal/rowMax*100) : 0;
+                        html += `<tr>
+                            <td style="padding:7px 10px;background:${rowBg};color:#2c3e50;">${q.label}${q.target?`<span style="color:#aaa;font-size:10px;margin-left:4px;">(${q.target})</span>`:''}</td>
+                            <td style="padding:7px 6px;background:${rowBg};text-align:center;color:#888;">5</td>
+                            ${cells}
+                            <td style="padding:7px 6px;text-align:center;background:${rowBg};font-weight:700;color:${sCol(rPct)};">${rowMax>0?rowTotal:'–'}</td>
+                        </tr>`;
+                    });
+
+                    // Pratikul section
+                    html += `<tr><td colspan="${3+wDates.length}" style="background:#fde8e8;font-weight:700;color:#e74c3c;padding:6px 10px;font-size:11px;letter-spacing:0.4px;">🚫 PRATIKULASYA (Unfavourable) — max 5/day each</td></tr>`;
+                    PRATIKUL_QUESTIONS.forEach((q, qi) => {
+                        const rowBg = qi % 2 === 0 ? '#fff' : '#fafafa';
+                        let rowTotal = 0;
+                        let cells = '';
+                        wDates.forEach(ds => {
+                            const entry = allData[ds];
+                            const val = entry?.pratikul?.[q.id] || null;
+                            const sc = val ? getPratikulScore(val) : null;
+                            if (sc !== null) rowTotal += sc;
+                            const { bg, tc } = ansColor(val, 'pratikul');
+                            cells += `<td style="padding:7px 4px;text-align:center;background:${rowBg};">
+                                ${entry ? `<span style="background:${bg};color:${tc};padding:2px 6px;border-radius:4px;font-weight:700;font-size:11px;white-space:nowrap;">${val==='yes'?'Y':val==='partial'?'P':val==='no'?'N':'–'} <span style="font-size:9px;">(${sc>=0?'+':''}${sc??'–'})</span></span>` : '<span style="color:#ccc;">–</span>'}
+                            </td>`;
+                        });
+                        const rowMax = wFilled.length * 5;
+                        const rPct = rowMax > 0 ? Math.round(rowTotal/rowMax*100) : 0;
+                        html += `<tr>
+                            <td style="padding:7px 10px;background:${rowBg};color:#2c3e50;">${q.label}</td>
+                            <td style="padding:7px 6px;background:${rowBg};text-align:center;color:#888;">5</td>
+                            ${cells}
+                            <td style="padding:7px 6px;text-align:center;background:${rowBg};font-weight:700;color:${sCol(rPct)};">${rowMax>0?rowTotal:'–'}</td>
+                        </tr>`;
+                    });
+
+                    // Total row
+                    let totalCells = '';
+                    wDates.forEach(ds => {
+                        const entry = allData[ds];
+                        const sc = entry?.totalScore ?? null;
+                        const bg = sc === null ? '#f8f9fa' : sc >= 35 ? '#c8f7c5' : sc >= 20 ? '#fff3cd' : '#fde8e8';
+                        const tc = sc === null ? '#aaa' : sc >= 35 ? '#27ae60' : sc >= 20 ? '#f39c12' : '#e74c3c';
+                        totalCells += `<td style="padding:8px 4px;text-align:center;background:${bg};font-weight:800;color:${tc};font-size:13px;">${sc !== null ? `${sc}<span style="font-size:10px;font-weight:400;">/50</span>` : '–'}</td>`;
+                    });
+                    html += `<tr style="border-top:2px solid #e0e0e0;">
+                        <td colspan="2" style="padding:8px 10px;font-weight:700;font-size:12px;color:#2c3e50;background:#f8f9fa;">Total Score</td>
+                        ${totalCells}
+                        <td style="padding:8px 6px;text-align:center;background:#f0eaf8;font-weight:800;color:${sCol(wPct)};font-size:13px;">${wTotal}<span style="font-size:10px;font-weight:400;">/${wMax}</span></td>
+                    </tr>`;
+
+                    html += `</tbody></table></div>`;
                 }
+                html += `</div>`;
             });
-            // Month total column (collapsible back)
-            columns.push({ type: 'monthTotal', monthKey, dates: monthDates });
-        } else {
-            // Show collapsed month column
-            columns.push({ type: 'month', monthKey, dates: monthDates });
+            html += `</div>`;
         }
+        html += `</div>`;
     });
 
-    // Build header row
-    let headerCells = '';
-    columns.forEach(col => {
-        if (col.type === 'day') {
-            const isToday = col.date === todayStr;
-            headerCells += `<th style="min-width:44px;padding:6px 3px;font-size:11px;background:#3498db;color:white;text-align:center;white-space:nowrap;${isToday?'background:#1a5276;':''}">${fmtDate(col.date)}</th>`;
-        } else if (col.type === 'week') {
-            headerCells += `<th onclick="toggleTapahGroup('week_${col.sunStr}')" style="min-width:80px;padding:6px 4px;font-size:11px;background:#2980b9;color:white;text-align:center;cursor:pointer;white-space:nowrap;" title="Click to expand">${fmtWeek(col.sunStr)} ▶</th>`;
-        } else if (col.type === 'weekTotal') {
-            headerCells += `<th onclick="toggleTapahGroup('week_${col.sunStr}')" style="min-width:60px;padding:6px 4px;font-size:11px;background:#1a6b9a;color:white;text-align:center;cursor:pointer;white-space:nowrap;" title="Click to collapse">Wk Total ◀</th>`;
-        } else if (col.type === 'month') {
-            headerCells += `<th onclick="toggleTapahGroup('month_${col.monthKey}')" style="min-width:90px;padding:6px 4px;font-size:11px;background:#8e44ad;color:white;text-align:center;cursor:pointer;white-space:nowrap;" title="Click to expand">${fmtMonth(col.monthKey)} ▶</th>`;
-        } else if (col.type === 'monthTotal') {
-            headerCells += `<th onclick="toggleTapahGroup('month_${col.monthKey}')" style="min-width:70px;padding:6px 4px;font-size:11px;background:#6c3483;color:white;text-align:center;cursor:pointer;white-space:nowrap;" title="Click to collapse">Mo Total ◀</th>`;
-        }
-    });
-
-    // Build section rows
-    let bodyRows = '';
-
-    // Section header: ANUKULASYA
-    bodyRows += `<tr><td colspan="3" style="background:#e8f8f0;font-weight:700;color:#27ae60;padding:8px 10px;font-size:12px;letter-spacing:0.5px;">🌿 ANUKULASYA (Favourable)</td>${columns.map(col => `<td style="background:#e8f8f0;"></td>`).join('')}</tr>`;
-
-    ANUKUL_QUESTIONS.forEach((q, idx) => {
-        let cells = '';
-        columns.forEach(col => {
-            if (col.type === 'day') {
-                const entry = allData[col.date];
-                const val = entry?.anukul?.[q.id] || null;
-                const isFuture = col.date > todayStr;
-                if (isFuture) {
-                    cells += `<td style="background:#f8f9fa;text-align:center;font-size:11px;color:#ccc;">–</td>`;
-                } else {
-                    cells += `<td style="background:${cellColor(val,'anukul')};text-align:center;font-size:12px;font-weight:600;color:${cellTextColor(val,'anukul')};padding:5px 2px;" title="${val||'No entry'}">${cellLabel(val)}</td>`;
-                }
-            } else {
-                // Summary column
-                const { totals, maxPossible } = summarize(col.dates.filter(d => allData[d]));
-                const sc = totals[q.id] || 0;
-                const maxSc = col.dates.filter(d => allData[d]).length * 5;
-                const pct = maxSc > 0 ? Math.round(sc / maxSc * 100) : 0;
-                const bg = pct >= 70 ? '#c8f7c5' : pct >= 40 ? '#fff3cd' : maxSc > 0 ? '#ffd5d5' : '#f8f9fa';
-                const tc = pct >= 70 ? '#27ae60' : pct >= 40 ? '#f39c12' : maxSc > 0 ? '#e74c3c' : '#aaa';
-                cells += `<td style="background:${bg};text-align:center;font-size:12px;font-weight:700;color:${tc};padding:5px 2px;">${maxSc > 0 ? sc : '–'}</td>`;
-            }
-        });
-        bodyRows += `<tr>
-            <td style="padding:6px 8px;font-size:12px;text-align:center;color:#555;">${idx+1}</td>
-            <td style="padding:6px 8px;font-size:12px;color:#2c3e50;">${q.label}</td>
-            <td style="padding:6px 8px;font-size:11px;color:#888;text-align:center;white-space:nowrap;">${q.target||''}</td>
-            ${cells}
-        </tr>`;
-    });
-
-    // Section header: PRATIKULASYA
-    bodyRows += `<tr><td colspan="3" style="background:#fde8e8;font-weight:700;color:#e74c3c;padding:8px 10px;font-size:12px;letter-spacing:0.5px;">🚫 PRATIKULASYA (Unfavourable)</td>${columns.map(col => `<td style="background:#fde8e8;"></td>`).join('')}</tr>`;
-
-    PRATIKUL_QUESTIONS.forEach((q, idx) => {
-        let cells = '';
-        columns.forEach(col => {
-            if (col.type === 'day') {
-                const entry = allData[col.date];
-                const val = entry?.pratikul?.[q.id] || null;
-                const isFuture = col.date > todayStr;
-                if (isFuture) {
-                    cells += `<td style="background:#f8f9fa;text-align:center;font-size:11px;color:#ccc;">–</td>`;
-                } else {
-                    cells += `<td style="background:${cellColor(val,'pratikul')};text-align:center;font-size:12px;font-weight:600;color:${cellTextColor(val,'pratikul')};padding:5px 2px;" title="${val||'No entry'}">${cellLabel(val)}</td>`;
-                }
-            } else {
-                const { totals } = summarize(col.dates.filter(d => allData[d]));
-                const sc = totals[q.id] || 0;
-                const maxSc = col.dates.filter(d => allData[d]).length * 5;
-                const pct = maxSc > 0 ? Math.round(sc / maxSc * 100) : 0;
-                const bg = pct >= 70 ? '#c8f7c5' : pct >= 40 ? '#fff3cd' : maxSc > 0 ? '#ffd5d5' : '#f8f9fa';
-                const tc = pct >= 70 ? '#27ae60' : pct >= 40 ? '#f39c12' : maxSc > 0 ? '#e74c3c' : '#aaa';
-                cells += `<td style="background:${bg};text-align:center;font-size:12px;font-weight:700;color:${tc};padding:5px 2px;">${maxSc > 0 ? sc : '–'}</td>`;
-            }
-        });
-        bodyRows += `<tr>
-            <td style="padding:6px 8px;font-size:12px;text-align:center;color:#555;">${idx+1}</td>
-            <td style="padding:6px 8px;font-size:12px;color:#2c3e50;">${q.label}</td>
-            <td style="padding:6px 8px;font-size:11px;color:#888;text-align:center;"></td>
-            ${cells}
-        </tr>`;
-    });
-
-    // Total row
-    let totalCells = '';
-    columns.forEach(col => {
-        const datesWithData = col.dates ? col.dates.filter(d => allData[d]) : (allData[col.date] ? [col.date] : []);
-        if (col.type === 'day') {
-            const entry = allData[col.date];
-            const sc = entry?.totalScore ?? null;
-            const isFuture = col.date > todayStr;
-            if (isFuture) {
-                totalCells += `<td style="background:#f8f9fa;text-align:center;font-size:11px;color:#ccc;font-weight:700;">–</td>`;
-            } else {
-                const bg = sc === null ? '#f8f9fa' : sc >= 35 ? '#c8f7c5' : sc >= 20 ? '#fff3cd' : '#ffd5d5';
-                const tc = sc === null ? '#aaa' : sc >= 35 ? '#27ae60' : sc >= 20 ? '#f39c12' : '#e74c3c';
-                totalCells += `<td style="background:${bg};text-align:center;font-size:12px;font-weight:700;color:${tc};padding:5px 2px;">${sc !== null ? sc : '–'}</td>`;
-            }
-        } else {
-            const { grandTotal, maxPossible } = summarize(datesWithData);
-            const pct = maxPossible > 0 ? Math.round(grandTotal / maxPossible * 100) : 0;
-            const bg = pct >= 70 ? '#c8f7c5' : pct >= 40 ? '#fff3cd' : maxPossible > 0 ? '#ffd5d5' : '#f8f9fa';
-            const tc = pct >= 70 ? '#27ae60' : pct >= 40 ? '#f39c12' : maxPossible > 0 ? '#e74c3c' : '#aaa';
-            totalCells += `<td style="background:${bg};text-align:center;font-size:12px;font-weight:700;color:${tc};padding:5px 2px;">${maxPossible > 0 ? grandTotal : '–'}</td>`;
-        }
-    });
-
-    // % row
-    let pctCells = '';
-    columns.forEach(col => {
-        const datesWithData = col.dates ? col.dates.filter(d => allData[d]) : (allData[col.date] ? [col.date] : []);
-        if (col.type === 'day') {
-            const entry = allData[col.date];
-            const pct = entry ? Math.round((entry.totalScore || 0) / 50 * 100) : null;
-            const isFuture = col.date > todayStr;
-            if (isFuture) {
-                pctCells += `<td style="text-align:center;font-size:11px;color:#ccc;">–</td>`;
-            } else {
-                const tc = pct === null ? '#aaa' : pct >= 70 ? '#27ae60' : pct >= 40 ? '#f39c12' : '#e74c3c';
-                pctCells += `<td style="text-align:center;font-size:11px;font-weight:700;color:${tc};">${pct !== null ? pct+'%' : '–'}</td>`;
-            }
-        } else {
-            const { grandTotal, maxPossible } = summarize(datesWithData);
-            const pct = maxPossible > 0 ? Math.round(grandTotal / maxPossible * 100) : null;
-            const tc = pct === null ? '#aaa' : pct >= 70 ? '#27ae60' : pct >= 40 ? '#f39c12' : '#e74c3c';
-            pctCells += `<td style="text-align:center;font-size:11px;font-weight:700;color:${tc};">${pct !== null ? pct+'%' : '–'}</td>`;
-        }
-    });
-
-    // Legend
-    const legend = `
-        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px;font-size:12px;align-items:center;">
-            <span style="font-weight:600;color:#555;">Legend:</span>
-            <span style="background:#c8f7c5;color:#27ae60;padding:2px 10px;border-radius:4px;font-weight:600;">Y = Yes</span>
-            <span style="background:#fff3cd;color:#f39c12;padding:2px 10px;border-radius:4px;font-weight:600;">P = Partial</span>
-            <span style="background:#ffd5d5;color:#e74c3c;padding:2px 10px;border-radius:4px;font-weight:600;">N = No</span>
-            <span style="color:#888;font-size:11px;">| Click week/month headers to expand ▶ or collapse ◀</span>
-        </div>`;
-
-    container.innerHTML = `
-        ${legend}
-        <div style="overflow-x:auto;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.08);">
-        <table style="border-collapse:collapse;width:100%;font-family:'Segoe UI',sans-serif;min-width:400px;">
-            <thead>
-                <tr style="background:#2c3e50;color:white;">
-                    <th style="padding:8px 6px;font-size:12px;text-align:center;min-width:32px;">Sr</th>
-                    <th style="padding:8px 10px;font-size:12px;text-align:left;min-width:180px;">Particular</th>
-                    <th style="padding:8px 6px;font-size:11px;text-align:center;min-width:48px;">T-Dur</th>
-                    ${headerCells}
-                </tr>
-            </thead>
-            <tbody>
-                ${bodyRows}
-                <tr style="background:#f0f4ff;">
-                    <td colspan="3" style="padding:7px 10px;font-weight:700;font-size:12px;color:#2c3e50;">Total (50)</td>
-                    ${totalCells}
-                </tr>
-                <tr style="background:#e8f0fe;">
-                    <td colspan="3" style="padding:7px 10px;font-weight:700;font-size:12px;color:#2c3e50;">Percentage</td>
-                    ${pctCells}
-                </tr>
-            </tbody>
-        </table>
-        </div>`;
+    container.innerHTML = html || '<p style="color:#aaa;text-align:center;padding:30px;">No Tapah data yet. Start tracking!</p>';
 }
 function setupDateSelect() {
     const s = document.getElementById('sadhana-date');

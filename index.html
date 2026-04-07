@@ -315,6 +315,10 @@
                                         style="width:auto;padding:8px 16px;font-size:13px;background:var(--success);color:white;border:none;border-radius:20px;cursor:pointer;white-space:nowrap;margin:0;font-weight:600;">
                                         ⬇ Excel
                                     </button>
+                                    <button onclick="downloadMasterExcel()"
+                                        style="width:auto;padding:8px 16px;font-size:13px;background:#8e44ad;color:white;border:none;border-radius:20px;cursor:pointer;white-space:nowrap;margin:0;font-weight:600;">
+                                        ⬇ Master
+                                    </button>
                                 </div>
                             </div>
                             <input type="file" id="import-excel-input" accept=".xlsx,.xls,.csv" style="display:none;" onchange="importExcelFile(this)">
@@ -387,8 +391,14 @@
                     <button onclick="cancelTapahEdit()" style="width:auto;padding:5px 14px;background:#6c757d;font-size:13px;margin:0;border-radius:6px;">✕ Cancel Edit</button>
                 </div>
                 <div class="card" style="margin-bottom:16px;padding:14px 18px;">
-                    <label><strong>Date:</strong></label>
-                    <select id="tapah-date" required></select>
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                        <strong style="font-size:14px;color:#2c3e50;">📅 Select Date</strong>
+                        <span id="tapah-date-status" style="font-size:12px;padding:3px 10px;border-radius:20px;font-weight:700;background:#f0f0f0;color:#888;">—</span>
+                    </div>
+                    <input type="date" id="tapah-date" required
+                        style="width:100%;padding:10px 14px;border:2px solid #764ba2;border-radius:10px;font-size:15px;font-weight:600;color:#2c3e50;background:#faf8ff;box-sizing:border-box;"
+                        onchange="onTapahDateChange(this.value)">
+                    <div id="tapah-date-hint" style="font-size:11px;color:#aaa;margin-top:6px;text-align:center;">Pick any date from app start to today</div>
                 </div>
                 <div id="tapah-flashcard-area" class="card" style="margin-bottom:16px;padding:0;overflow:hidden;position:relative;min-height:320px;">
                     <div style="background:#f0f0f0;height:5px;">
@@ -453,15 +463,31 @@
 
                 <!-- Tapah Reports sub-tab -->
                 <div id="tapah-reports-subtab" class="tapah-subtab-content" style="display:none;">
+                    <div class="card" style="padding:14px 18px;margin-bottom:14px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <span style="font-size:18px;">🌿</span>
+                                <strong style="color:#764ba2;font-size:14px;">Tapah History</strong>
+                            </div>
+                            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                                <button onclick="document.getElementById('import-tapah-input').click()"
+                                    style="width:auto;padding:7px 14px;font-size:12px;background:#3498db;color:white;border:none;border-radius:20px;cursor:pointer;white-space:nowrap;margin:0;font-weight:600;">⬆ Import</button>
+                                <button onclick="downloadTapahExcel()"
+                                    style="width:auto;padding:7px 14px;font-size:12px;background:#27ae60;color:white;border:none;border-radius:20px;cursor:pointer;white-space:nowrap;margin:0;font-weight:600;">⬇ Excel</button>
+                            </div>
+                        </div>
+                        <input type="file" id="import-tapah-input" accept=".xlsx,.xls" style="display:none;" onchange="importTapahExcel(this)">
+                    </div>
                     <div id="tapah-report-container"></div>
                 </div>
 
-                <!-- Tapah Progress sub-tab (placeholder) -->
+                <!-- Tapah Progress sub-tab -->
                 <div id="tapah-progress-subtab" class="tapah-subtab-content" style="display:none;">
-                    <div class="card" style="text-align:center;padding:40px 20px;color:#888;">
-                        <div style="font-size:36px;margin-bottom:10px;">📈</div>
-                        <div style="font-weight:600;">Tapah Progress</div>
-                        <div style="font-size:13px;margin-top:6px;">Coming soon</div>
+                    <div class="card">
+                        <div id="tapah-score-ring-container" style="padding:16px;background:#f8f9fa;border-radius:10px;margin-bottom:20px;"></div>
+                        <h4 style="margin:0 0 10px;color:var(--primary);">📈 Tapah Progress (Last 28 Days)</h4>
+                        <canvas id="tapah-score-chart"></canvas>
+                        <div style="text-align:center;color:#888;font-size:12px;margin-top:6px;">Daily max: 50 marks</div>
                     </div>
                 </div>
             </div><!-- /tapah-main-tab -->
@@ -489,8 +515,14 @@
                             <button onclick="cancelTapah2Edit()" style="width:auto;padding:5px 14px;background:#6c757d;font-size:13px;margin:0;border-radius:6px;">✕ Cancel Edit</button>
                         </div>
                         <div class="card" style="margin-bottom:16px;padding:14px 18px;">
-                            <label><strong>Date:</strong></label>
-                            <select id="tapah2-date" required></select>
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                                <strong style="font-size:14px;color:#2c3e50;">📅 Select Date</strong>
+                                <span id="tapah2-date-status" style="font-size:12px;padding:3px 10px;border-radius:20px;font-weight:700;background:#f0f0f0;color:#888;">—</span>
+                            </div>
+                            <input type="date" id="tapah2-date" required
+                                style="width:100%;padding:10px 14px;border:2px solid #e67e22;border-radius:10px;font-size:15px;font-weight:600;color:#2c3e50;background:#fef9f5;box-sizing:border-box;"
+                                onchange="onTapah2DateChange(this.value)">
+                            <div id="tapah2-date-hint" style="font-size:11px;color:#aaa;margin-top:6px;text-align:center;">Pick any date from app start to today</div>
                         </div>
                         <!-- Flashcard area -->
                         <div id="tapah2-flashcard-area" class="card" style="margin-bottom:16px;padding:0;overflow:hidden;position:relative;min-height:380px;">
@@ -537,6 +569,21 @@
 
                 <!-- Tapah-2 Reports sub-tab -->
                 <div id="tapah2-reports-subtab" class="tapah2-subtab-content" style="display:none;">
+                    <div class="card" style="padding:14px 18px;margin-bottom:14px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <span style="font-size:18px;">📿</span>
+                                <strong style="color:#e67e22;font-size:14px;">Tapah-2 History</strong>
+                            </div>
+                            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                                <button onclick="document.getElementById('import-tapah2-input').click()"
+                                    style="width:auto;padding:7px 14px;font-size:12px;background:#3498db;color:white;border:none;border-radius:20px;cursor:pointer;white-space:nowrap;margin:0;font-weight:600;">⬆ Import</button>
+                                <button onclick="downloadTapah2Excel()"
+                                    style="width:auto;padding:7px 14px;font-size:12px;background:#27ae60;color:white;border:none;border-radius:20px;cursor:pointer;white-space:nowrap;margin:0;font-weight:600;">⬇ Excel</button>
+                            </div>
+                        </div>
+                        <input type="file" id="import-tapah2-input" accept=".xlsx,.xls" style="display:none;" onchange="importTapah2Excel(this)">
+                    </div>
                     <div id="tapah2-report-container"></div>
                 </div>
 
