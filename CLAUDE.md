@@ -55,9 +55,11 @@ users/{userId}/
 
 8 sadhana metrics scored on tiered scales (25/20/15/10/5/0/-5 points each). Daily max = **175 points**, weekly max = **1225 points**. Scoring logic is in `computeScores()`.
 
-**NR (Not Reported) penalty**: When a past day has no entry, `getNRData()` returns totalScore = **-40**, dayPercent = **-23%**, with -5 for each activity (except daySleep = 0). NR days are included in all weekly calculations — they are NOT skipped.
+**NR (Not Reported) penalty**: When a past day has no entry, `getNRData()` returns totalScore = **-40**, dayPercent = **-23%**, with **-5 for every activity including daySleep**. NR days are included in all weekly calculations — they are NOT skipped.
 
-**Today exception**: If today is not yet filled, it gets `null` (no penalty) — penalty only applies to past unfilled days.
+**APP_START_DATE** (`const APP_START_DATE = '2026-03-27'` at line 24): Days before this date are never penalized as NR — they are simply skipped in all calculations (reports, charts, ring). This is the app launch date.
+
+**Today exception**: If today is not yet filled, it gets `null` (no penalty) — penalty only applies to past unfilled days on/after APP_START_DATE.
 
 **Tapah scoring**: Anukulasya — 5 pts (yes), 2 (partial), 0 (no). Pratikulasya — 5 pts (no), 2 (partial), -5 (yes). Flash-card UI with 10 questions.
 

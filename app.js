@@ -56,7 +56,7 @@ function getNRData(date) {
         id: date, totalScore: -40, dayPercent: -23,
         sleepTime: "NR", wakeupTime: "NR", morningProgramTime: "NR", chantingTime: "NR",
         readingMinutes: "NR", hearingMinutes: "NR", notesMinutes: "NR", daySleepMinutes: "NR",
-        scores: { sleep: -5, wakeup: -5, morningProgram: -5, chanting: -5, reading: -5, hearing: -5, notes: -5, daySleep: 0 }
+        scores: { sleep: -5, wakeup: -5, morningProgram: -5, chanting: -5, reading: -5, hearing: -5, notes: -5, daySleep: -5 }
     };
 }
 
@@ -436,7 +436,8 @@ window.switchMainTab = (tab) => {
     // Hide all main tab contents
     document.querySelectorAll('.main-tab-content').forEach(el => { el.style.display = 'none'; });
     // Show selected
-    const target = document.getElementById(tab === 'sadhna' ? 'sadhna-main-tab' : tab === 'tapah' ? 'tapah-main-tab' : 'home-tab');
+    const tabIds = { sadhna: 'sadhna-main-tab', tapah: 'tapah-main-tab', tapah2: 'tapah2-main-tab' };
+    const target = document.getElementById(tabIds[tab] || 'home-tab');
     if (target) target.style.display = 'block';
 
     // Update bottom nav active state
@@ -448,11 +449,12 @@ window.switchMainTab = (tab) => {
     // Load data for the tab
     if (tab === 'home' && currentUser) loadHomeScreen();
     if (tab === 'tapah') resetTapahForm();
+    if (tab === 'tapah2') resetTapah2Form();
 };
 
 // --- SUB-TAB SWITCHER (within Sadhna / Tapah) ---
 window.switchSubTab = (parent, sub) => {
-    const activeColor = parent === 'sadhna' ? '#2c3e50' : '#764ba2';
+    const activeColor = parent === 'sadhna' ? '#2c3e50' : parent === 'tapah2' ? '#e67e22' : '#764ba2';
     // Hide all sub-tab contents for this parent
     document.querySelectorAll(`.${parent}-subtab-content`).forEach(el => { el.style.display = 'none'; });
     // Show selected
@@ -470,15 +472,18 @@ window.switchSubTab = (parent, sub) => {
         activeBtn.style.color = 'white';
     }
 
-    if (parent === 'tapah' && sub === 'entry') resetTapahForm();
+    if (parent === 'tapah'  && sub === 'entry') resetTapahForm();
+    if (parent === 'tapah2' && sub === 'entry') resetTapah2Form();
 
     // Load data
     if (parent === 'sadhna' && sub === 'reports' && currentUser) {
         _reportsLoading = false;
         loadReports(currentUser.uid, 'weekly-reports-container');
     }
-    if (parent === 'sadhna' && sub === 'progress' && currentUser) generateCharts();
-    if (parent === 'tapah' && sub === 'reports' && currentUser) loadTapahReport();
+    if (parent === 'sadhna'  && sub === 'progress' && currentUser) generateCharts();
+    if (parent === 'tapah'   && sub === 'reports'  && currentUser) loadTapahReport();
+    if (parent === 'tapah2'  && sub === 'reports'  && currentUser) loadTapah2Report();
+    if (parent === 'tapah2'  && sub === 'progress' && currentUser) loadTapah2Progress();
 };
 
 // Legacy switchTab — keep for backward compat (edit buttons etc.)
@@ -524,7 +529,7 @@ async function loadHomeScreen(weekOffset) {
         const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
         const dayDots = [];
         const actTotals = { Sleep: 0, 'Wake-up': 0, 'Morning Prog.': 0, Chanting: 0, Reading: 0, Hearing: 0, 'Notes Rev.': 0, 'Day Sleep': 0 };
-        const NR_SC = { sleep: -5, wakeup: -5, morningProgram: -5, chanting: -5, reading: -5, hearing: -5, notes: -5, daySleep: 0 };
+        const NR_SC = { sleep: -5, wakeup: -5, morningProgram: -5, chanting: -5, reading: -5, hearing: -5, notes: -5, daySleep: -5 };
 
         for (let i = 0; i < 7; i++) {
             const d = new Date(thisWeekSun);
@@ -735,7 +740,7 @@ auth.onAuthStateChanged(async (user) => {
 
 // --- 6. SCORING ENGINE ---
 function computeScores(slp, wak, mpTime, mpNotDone, chn, rMin, hMin, nMin, dsMin) {
-    const sc = { sleep: -5, wakeup: -5, morningProgram: -5, chanting: -5, reading: -5, hearing: -5, notes: -5, daySleep: 0 };
+    const sc = { sleep: -5, wakeup: -5, morningProgram: -5, chanting: -5, reading: -5, hearing: -5, notes: -5, daySleep: -5 };
 
     // Sleep Score
     const slpM = t2m(slp, true);
@@ -2366,6 +2371,690 @@ window.submitTapahFromFlash = async () => {
 window.selectTapahOption = () => {};
 
 // ── END TAPAH MODULE ──
+
+// ══════════════════════════════════════════════
+// --- TAPAH-2 MODULE ---
+// ══════════════════════════════════════════════
+
+// Flat list of all questions — each sub-item is its own card
+const TAPAH2_QUESTIONS = [
+    // Focus on Chanting – 5 marks (5 × 1)
+    { id: 'ch_q1', cat: 'chanting', catLabel: 'Focus on Chanting',           catEmoji: '🧘‍♂️', label: 'Pray with Heart',                                         max: 1 },
+    { id: 'ch_q2', cat: 'chanting', catLabel: 'Focus on Chanting',           catEmoji: '🧘‍♂️', label: 'No Use anything except Chanting',                         max: 1 },
+    { id: 'ch_q3', cat: 'chanting', catLabel: 'Focus on Chanting',           catEmoji: '🧘‍♂️', label: 'Clear Pronunciation / Hearing',                           max: 1 },
+    { id: 'ch_q4', cat: 'chanting', catLabel: 'Focus on Chanting',           catEmoji: '🧘‍♂️', label: 'Minimum 10 Rounds in one position',                       max: 1 },
+    { id: 'ch_q5', cat: 'chanting', catLabel: 'Focus on Chanting',           catEmoji: '🧘‍♂️', label: 'Complete with one slot',                                  max: 1 },
+    // No Prajalpa – 5 marks (5 × 1)
+    { id: 'pr_q1', cat: 'prajalpa', catLabel: 'No Prajalpa',                 catEmoji: '🧘',   label: 'No superfluous talk',                                      max: 1 },
+    { id: 'pr_q2', cat: 'prajalpa', catLabel: 'No Prajalpa',                 catEmoji: '🧘',   label: 'Social media control (1 Hr/Day)',                          max: 1 },
+    { id: 'pr_q3', cat: 'prajalpa', catLabel: 'No Prajalpa',                 catEmoji: '🧘',   label: 'Avoid unnecessary hearing',                                max: 1 },
+    { id: 'pr_q4', cat: 'prajalpa', catLabel: 'No Prajalpa',                 catEmoji: '🧘',   label: 'Sattam Kirtanam (internal remembrance)',                   max: 1 },
+    { id: 'pr_q5', cat: 'prajalpa', catLabel: 'No Prajalpa',                 catEmoji: '🧘',   label: 'Hourly Prayer',                                            max: 1 },
+    // No Vaishnav Aparadha – 4 marks (4 × 1)
+    { id: 'va_q1', cat: 'vaishnav', catLabel: 'No Vaishnav Aparadha',        catEmoji: '🙏',   label: 'No Vaishnav Fault Discussion (Authority Except)',          max: 1 },
+    { id: 'va_q2', cat: 'vaishnav', catLabel: 'No Vaishnav Aparadha',        catEmoji: '🙏',   label: 'No debate (accept & learn)',                               max: 1 },
+    { id: 'va_q3', cat: 'vaishnav', catLabel: 'No Vaishnav Aparadha',        catEmoji: '🙏',   label: 'Mentally offer obeisances',                                max: 1 },
+    { id: 'va_q4', cat: 'vaishnav', catLabel: 'No Vaishnav Aparadha',        catEmoji: '🙏',   label: 'Non-Critical Vision (Jeev Ninda)',                         max: 1 },
+    // Interaction Discipline (Maryada) – 5 marks (5 × 1)
+    { id: 'ma_q1', cat: 'maryada',  catLabel: 'Interaction Discipline',      catEmoji: '🚫',   label: 'No unnecessary talk',                                      max: 1 },
+    { id: 'ma_q2', cat: 'maryada',  catLabel: 'Interaction Discipline',      catEmoji: '🚫',   label: 'No joking / casual talk',                                  max: 1 },
+    { id: 'ma_q3', cat: 'maryada',  catLabel: 'Interaction Discipline',      catEmoji: '🚫',   label: 'Physical Boundaries',                                      max: 1 },
+    { id: 'ma_q4', cat: 'maryada',  catLabel: 'Interaction Discipline',      catEmoji: '🚫',   label: 'Focused Awareness',                                        max: 1 },
+    { id: 'ma_q5', cat: 'maryada',  catLabel: 'Interaction Discipline',      catEmoji: '🚫',   label: 'No Private meeting',                                       max: 1 },
+    // Harmonium / Skill – 15 marks (3 × 5)
+    { id: 'sk_q1', cat: 'skill',    catLabel: 'Harmonium / Skill',           catEmoji: '🎹',   label: 'Harmonium practice 30 min',                                max: 5 },
+    { id: 'sk_q2', cat: 'skill',    catLabel: 'Harmonium / Skill',           catEmoji: '🎹',   label: 'DRLR + speaking + Words',                                  max: 5 },
+    { id: 'sk_q3', cat: 'skill',    catLabel: 'Harmonium / Skill',           catEmoji: '🎹',   label: 'Weekly weakness notes',                                    max: 5 },
+    // Tolerance – 6 marks (6 × 1)
+    { id: 'to_q1', cat: 'tolerance',catLabel: 'Tolerance',                   catEmoji: '🌿',   label: 'No Reaction (Control Response)',                            max: 1 },
+    { id: 'to_q2', cat: 'tolerance',catLabel: 'Tolerance',                   catEmoji: '🌿',   label: 'Situation Acceptance',                                     max: 1 },
+    { id: 'to_q3', cat: 'tolerance',catLabel: 'Tolerance',                   catEmoji: '🌿',   label: 'Respect Even When Hurt',                                   max: 1 },
+    { id: 'to_q4', cat: 'tolerance',catLabel: 'Tolerance',                   catEmoji: '🌿',   label: 'Steady in Dualities (Sukha/Dukha)',                         max: 1 },
+    { id: 'to_q5', cat: 'tolerance',catLabel: 'Tolerance',                   catEmoji: '🌿',   label: 'Forgiveness Practice (Chhodo, Aage Bado)',                  max: 1 },
+    { id: 'to_q6', cat: 'tolerance',catLabel: 'Tolerance',                   catEmoji: '🌿',   label: 'Continue Seva Despite Difficulty (Mood ho Ya Na ho)',       max: 1 },
+];
+
+// Category definitions for grouping (reports / mini-badges)
+const TAPAH2_CATS = [
+    { id: 'chanting',  label: 'Focus on Chanting',           emoji: '🧘‍♂️' },
+    { id: 'prajalpa',  label: 'No Prajalpa',                 emoji: '🧘'   },
+    { id: 'vaishnav',  label: 'No Vaishnav Aparadha',        emoji: '🙏'   },
+    { id: 'maryada',   label: 'Interaction Discipline',      emoji: '🚫'   },
+    { id: 'skill',     label: 'Harmonium / Skill',           emoji: '🎹'   },
+    { id: 'tolerance', label: 'Tolerance',                   emoji: '🌿'   },
+];
+
+const TAPAH2_MAX = TAPAH2_QUESTIONS.reduce((s, q) => s + q.max, 0); // 5+5+4+5+15+6 = 40
+
+let _tapah2Index     = 0;
+let _tapah2Scores    = {}; // { questionId: number }
+let _tapah2EditingDate = null;
+let _tapah2Advancing = false; // debounce for auto-advance on binary cards
+let _tapah2Chart     = null;
+
+function setupTapah2DateSelect() {
+    const s = document.getElementById('tapah2-date');
+    if (!s) return;
+    s.innerHTML = '';
+    for (let i = 0; i < 5; i++) {
+        const d = new Date(); d.setDate(d.getDate() - i);
+        const iso = toLocalDateStr(d);
+        const opt = document.createElement('option');
+        opt.value = iso;
+        opt.textContent = i === 0 ? `Today (${iso})` : i === 1 ? `Yesterday (${iso})` : iso;
+        s.appendChild(opt);
+    }
+}
+
+function resetTapah2Form() {
+    _tapah2Scores      = {};
+    _tapah2Index       = 0;
+    _tapah2EditingDate = null;
+    _tapah2Advancing   = false;
+    setupTapah2DateSelect();
+    const sel = document.getElementById('tapah2-date');
+    if (sel) sel.disabled = false;
+    const banner  = document.getElementById('tapah2-edit-banner');
+    const submit  = document.getElementById('tapah2-submit-btn');
+    const done    = document.getElementById('tapah2-done-screen');
+    const card    = document.getElementById('tapah2-card');
+    if (banner) banner.style.display = 'none';
+    if (submit) submit.style.display = 'none';
+    if (done)   done.style.display   = 'none';
+    if (card)   { card.style.display = 'block'; card.style.opacity = '1'; card.style.transform = 'none'; }
+    renderTapah2Card(0);
+    updateTapah2Totals();
+}
+
+window.cancelTapah2Edit = () => resetTapah2Form();
+
+// ── Card renderer ──────────────────────────────
+function renderTapah2Card(idx) {
+    const q = TAPAH2_QUESTIONS[idx];
+    if (!q) return;
+    const card    = document.getElementById('tapah2-card');
+    const counter = document.getElementById('tapah2-card-counter');
+    const bar     = document.getElementById('tapah2-progress-bar');
+    if (!card) return;
+
+    if (counter) counter.textContent = `Q ${idx + 1} / ${TAPAH2_QUESTIONS.length}`;
+    if (bar)     bar.style.width = `${(idx / TAPAH2_QUESTIONS.length) * 100}%`;
+
+    // Category position info
+    const catQs  = TAPAH2_QUESTIONS.filter(q2 => q2.cat === q.cat);
+    const catIdx = catQs.findIndex(q2 => q2.id === q.id);
+    const isLast = idx === TAPAH2_QUESTIONS.length - 1;
+    const existing = _tapah2Scores[q.id]; // may be 0, 1, number, or undefined
+
+    // Category badge
+    const badge = `<div style="display:inline-flex;align-items:center;gap:6px;background:#fef0e7;border-radius:20px;padding:5px 14px;margin-bottom:14px;">
+        <span style="font-size:15px;">${q.catEmoji}</span>
+        <span style="font-size:12px;color:#e67e22;font-weight:700;">${q.catLabel}</span>
+        <span style="font-size:11px;color:#bbb;margin-left:2px;">&nbsp;${catIdx + 1}/${catQs.length}</span>
+    </div>`;
+
+    const qText = `<div style="font-size:17px;font-weight:700;color:#2c3e50;margin-bottom:5px;line-height:1.4;">${q.label}</div>
+    <div style="font-size:12px;color:#aaa;margin-bottom:18px;">Max: ${q.max} mark${q.max > 1 ? 's' : ''}</div>`;
+
+    const backBtn = `<button type="button" onclick="tapah2CardBack()"
+        style="width:100%;padding:10px;border-radius:10px;border:2px solid #ddd;background:#f8f9fa;color:#555;font-weight:600;font-size:13px;margin:0;cursor:pointer;margin-top:10px;">
+        ← Back
+    </button>`;
+
+    if (q.max === 1) {
+        // Binary: Yes (1) / No (0) with auto-advance
+        const yesActive = existing === 1;
+        const noActive  = existing === 0;
+        const yesSt = yesActive
+            ? 'border:2px solid #27ae60;background:#e8f8f0;color:#27ae60;'
+            : 'border:2px solid #ddd;background:#f8f9fa;color:#555;';
+        const noSt  = noActive
+            ? 'border:2px solid #e74c3c;background:#fde8e8;color:#e74c3c;'
+            : 'border:2px solid #ddd;background:#f8f9fa;color:#555;';
+        const flashHtml = existing !== undefined
+            ? `<span style="color:${existing === 1 ? '#27ae60' : '#e74c3c'};">${existing === 1 ? '✅ +1 mark' : '❌ 0 marks'}</span>`
+            : '';
+
+        card.innerHTML = `<div style="padding:18px 20px 16px;">
+            ${badge}${qText}
+            <div style="display:flex;gap:12px;margin-bottom:10px;">
+                <button id="tapah2-btn-yes" type="button" onclick="tapah2SetMark(1)"
+                    style="flex:1;padding:18px 8px;border-radius:12px;${yesSt}font-weight:700;font-size:15px;width:auto;margin:0;cursor:pointer;transition:all 0.15s;">
+                    ✅ Yes
+                </button>
+                <button id="tapah2-btn-no" type="button" onclick="tapah2SetMark(0)"
+                    style="flex:1;padding:18px 8px;border-radius:12px;${noSt}font-weight:700;font-size:15px;width:auto;margin:0;cursor:pointer;transition:all 0.15s;">
+                    ❌ No
+                </button>
+            </div>
+            <div id="tapah2-score-flash" style="text-align:center;height:22px;font-size:13px;font-weight:700;">${flashHtml}</div>
+            ${backBtn}
+        </div>`;
+    } else {
+        // Numeric: number input + manual Next button
+        card.innerHTML = `<div style="padding:18px 20px 16px;">
+            ${badge}${qText}
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+                <label style="font-size:13px;font-weight:700;color:#2c3e50;white-space:nowrap;">Your Marks:</label>
+                <input type="number" id="tapah2-score-input" min="0" max="${q.max}"
+                    placeholder="0" value="${existing !== undefined ? existing : ''}"
+                    style="flex:1;padding:11px 14px;border:2px solid #e67e22;border-radius:10px;font-size:22px;font-weight:800;text-align:center;background:#fef9f5;color:#e67e22;width:auto;margin:0;"
+                    oninput="updateTapah2Totals()" onkeydown="if(event.key==='Enter')tapah2CardNext()">
+                <span style="font-size:15px;color:#aaa;font-weight:700;white-space:nowrap;">/ ${q.max}</span>
+            </div>
+            <div style="display:flex;gap:10px;">
+                <button type="button" onclick="tapah2CardBack()"
+                    style="flex:1;padding:12px;border-radius:10px;border:2px solid #ddd;background:#f8f9fa;color:#555;font-weight:700;font-size:13px;width:auto;margin:0;cursor:pointer;">
+                    ← Back
+                </button>
+                <button type="button" onclick="tapah2CardNext()"
+                    style="flex:2;padding:12px;border-radius:10px;border:none;background:#e67e22;color:white;font-weight:700;font-size:14px;width:auto;margin:0;cursor:pointer;">
+                    ${isLast ? '✅ Done' : 'Next →'}
+                </button>
+            </div>
+        </div>`;
+        setTimeout(() => { const inp = document.getElementById('tapah2-score-input'); if (inp) { inp.focus(); inp.select(); } }, 250);
+    }
+}
+
+// ── Slide animation helper ──────────────────────
+function tapah2Animate(targetIdx, direction) {
+    const card = document.getElementById('tapah2-card');
+    const outX = direction === 'forward' ? '-20px' : '20px';
+    const inX  = direction === 'forward' ? '20px'  : '-20px';
+    if (card) { card.style.opacity = '0'; card.style.transform = `translateX(${outX})`; }
+    setTimeout(() => {
+        _tapah2Index = targetIdx;
+        renderTapah2Card(targetIdx);
+        if (card) {
+            card.style.transition = 'none';
+            card.style.transform  = `translateX(${inX})`;
+            card.style.opacity    = '0';
+            setTimeout(() => {
+                card.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
+                card.style.opacity    = '1';
+                card.style.transform  = 'translateX(0)';
+            }, 20);
+        }
+        updateTapah2Totals();
+    }, 220);
+}
+
+// ── Binary answer (max=1 cards) ─────────────────
+window.tapah2SetMark = (val) => {
+    if (_tapah2Advancing) return;
+    const q = TAPAH2_QUESTIONS[_tapah2Index];
+    if (!q) return;
+    _tapah2Scores[q.id] = val;
+    updateTapah2Totals();
+    renderTapah2Card(_tapah2Index); // re-render to show selection highlight
+
+    _tapah2Advancing = true;
+    setTimeout(() => {
+        _tapah2Advancing = false;
+        const next = _tapah2Index + 1;
+        if (next < TAPAH2_QUESTIONS.length) tapah2Animate(next, 'forward');
+        else showTapah2DoneScreen();
+    }, 500);
+};
+
+// ── Next / Back navigation ──────────────────────
+window.tapah2CardNext = () => {
+    const q = TAPAH2_QUESTIONS[_tapah2Index];
+    if (q && q.max > 1) {
+        const inp = document.getElementById('tapah2-score-input');
+        if (inp) {
+            const raw = parseInt(inp.value, 10);
+            if (!isNaN(raw)) _tapah2Scores[q.id] = Math.max(0, Math.min(q.max, raw));
+        }
+    }
+    const next = _tapah2Index + 1;
+    if (next < TAPAH2_QUESTIONS.length) tapah2Animate(next, 'forward');
+    else showTapah2DoneScreen();
+};
+
+window.tapah2CardBack = () => {
+    if (_tapah2Index === 0) return;
+    const q = TAPAH2_QUESTIONS[_tapah2Index];
+    if (q && q.max > 1) {
+        const inp = document.getElementById('tapah2-score-input');
+        if (inp) {
+            const raw = parseInt(inp.value, 10);
+            if (!isNaN(raw)) _tapah2Scores[q.id] = Math.max(0, Math.min(q.max, raw));
+        }
+    }
+    tapah2Animate(_tapah2Index - 1, 'backward');
+};
+
+// ── Live totals & mini-badges ───────────────────
+function updateTapah2Totals() {
+    // Persist numeric input value if current card is numeric
+    const q = TAPAH2_QUESTIONS[_tapah2Index];
+    if (q && q.max > 1) {
+        const inp = document.getElementById('tapah2-score-input');
+        if (inp && inp.value !== '') {
+            const raw = parseInt(inp.value, 10);
+            if (!isNaN(raw)) {
+                const cl = Math.max(0, Math.min(q.max, raw));
+                _tapah2Scores[q.id] = cl;
+                if (raw !== cl) inp.value = cl;
+            }
+        }
+    }
+
+    let total = 0;
+    TAPAH2_QUESTIONS.forEach(q2 => { total += _tapah2Scores[q2.id] || 0; });
+    const pct   = Math.round((total / TAPAH2_MAX) * 100);
+    const color = pct >= 70 ? '#27ae60' : pct >= 50 ? '#f39c12' : '#e74c3c';
+
+    const td = document.getElementById('tapah2-total-display');
+    const pp = document.getElementById('tapah2-percent-display');
+    if (td) { td.textContent = `${total}/${TAPAH2_MAX}`; td.style.color = color; }
+    if (pp) { pp.textContent = `${pct}%`;                pp.style.color = color; }
+
+    // Mini category badges
+    const catEl = document.getElementById('tapah2-category-totals');
+    if (catEl) {
+        catEl.innerHTML = TAPAH2_CATS.map(cat => {
+            const catQs   = TAPAH2_QUESTIONS.filter(q2 => q2.cat === cat.id);
+            const catMax  = catQs.reduce((s, q2) => s + q2.max, 0);
+            const catSc   = catQs.reduce((s, q2) => s + (_tapah2Scores[q2.id] || 0), 0);
+            const anyDone = catQs.some(q2 => _tapah2Scores[q2.id] !== undefined);
+            const cp      = anyDone ? Math.round((catSc / catMax) * 100) : null;
+            const col     = !anyDone ? '#ccc' : cp >= 70 ? '#27ae60' : cp >= 40 ? '#f39c12' : '#e74c3c';
+            return `<div style="flex:1;min-width:70px;background:white;border-radius:8px;padding:6px 6px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.07);border-top:3px solid ${col};">
+                <div style="font-size:10px;color:#888;line-height:1.2;margin-bottom:2px;">${cat.emoji} ${cat.label.split(' ').slice(0,2).join(' ')}</div>
+                <div style="font-size:13px;font-weight:700;color:${col};">${anyDone ? catSc+'/'+catMax : '–'}</div>
+            </div>`;
+        }).join('');
+    }
+}
+
+// ── Done screen ─────────────────────────────────
+function showTapah2DoneScreen() {
+    const card   = document.getElementById('tapah2-card');
+    const done   = document.getElementById('tapah2-done-screen');
+    const submit = document.getElementById('tapah2-submit-btn');
+    const bar    = document.getElementById('tapah2-progress-bar');
+
+    if (card) card.style.display = 'none';
+    if (bar)  bar.style.width = '100%';
+
+    let total = 0;
+    TAPAH2_QUESTIONS.forEach(q => { total += _tapah2Scores[q.id] || 0; });
+    const pct   = Math.round((total / TAPAH2_MAX) * 100);
+    const color = pct >= 70 ? '#27ae60' : pct >= 50 ? '#f39c12' : '#e74c3c';
+
+    const doneScore = document.getElementById('tapah2-done-score');
+    const donePct   = document.getElementById('tapah2-done-pct');
+    if (doneScore) { doneScore.textContent = `${total} / ${TAPAH2_MAX}`; doneScore.style.color = color; }
+    if (donePct)   donePct.textContent = `${pct}%`;
+    if (done)   done.style.display   = 'block';
+    if (submit) submit.style.display = 'block';
+}
+
+window.tapah2FlashReview = () => {
+    _tapah2Advancing = false;
+    const firstUnfilled = TAPAH2_QUESTIONS.findIndex(q => _tapah2Scores[q.id] === undefined);
+    _tapah2Index = firstUnfilled >= 0 ? firstUnfilled : 0;
+    const card   = document.getElementById('tapah2-card');
+    const done   = document.getElementById('tapah2-done-screen');
+    const submit = document.getElementById('tapah2-submit-btn');
+    if (card)   { card.style.display = 'block'; card.style.opacity = '1'; card.style.transform = 'none'; }
+    if (done)   done.style.display   = 'none';
+    if (submit) submit.style.display = 'none';
+    renderTapah2Card(_tapah2Index);
+    updateTapah2Totals();
+};
+
+// ── Submit ──────────────────────────────────────
+window.submitTapah2 = async () => {
+    if (!currentUser) { alert('Please login first'); return; }
+    const date = document.getElementById('tapah2-date')?.value;
+    if (!date) { alert('Please select a date.'); return; }
+
+    const unfilled = TAPAH2_QUESTIONS.filter(q => _tapah2Scores[q.id] === undefined);
+    if (unfilled.length > 0) {
+        const go = confirm(`${unfilled.length} question(s) not answered. Submit anyway (counted as 0)?`);
+        if (!go) { window.tapah2FlashReview(); return; }
+    }
+
+    const scores = {};
+    let total = 0;
+    TAPAH2_QUESTIONS.forEach(q => { scores[q.id] = _tapah2Scores[q.id] || 0; total += scores[q.id]; });
+    const percent = Math.round((total / TAPAH2_MAX) * 100);
+
+    try {
+        await db.collection('users').doc(currentUser.uid).collection('tapah2').doc(date).set({
+            scores, totalScore: total, percent,
+            submittedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        const isEdit = _tapah2EditingDate !== null;
+        alert(`${isEdit ? 'Updated' : 'Saved'}! Tapah-2 Score: ${total}/${TAPAH2_MAX} (${percent}%)`);
+        resetTapah2Form();
+    } catch (err) {
+        alert('Could not save Tapah-2. Please check your internet and try again.');
+    }
+};
+
+// ── Edit past entry ─────────────────────────────
+window.editTapah2Entry = async (dateStr) => {
+    switchMainTab('tapah2');
+    resetTapah2Form();
+    try {
+        const snap = await db.collection('users').doc(currentUser.uid).collection('tapah2').doc(dateStr).get();
+        if (snap.exists) {
+            const d = snap.data();
+            TAPAH2_QUESTIONS.forEach(q => {
+                if (d.scores && d.scores[q.id] !== undefined) _tapah2Scores[q.id] = d.scores[q.id];
+            });
+        }
+    } catch (err) { alert('Could not load entry: ' + err.message); return; }
+
+    const sel = document.getElementById('tapah2-date');
+    if (sel) {
+        let found = false;
+        for (const opt of sel.options) { if (opt.value === dateStr) { opt.selected = true; found = true; break; } }
+        if (!found) {
+            const opt = document.createElement('option');
+            opt.value = dateStr; opt.textContent = dateStr;
+            sel.insertBefore(opt, sel.firstChild);
+            sel.value = dateStr;
+        }
+        sel.disabled = true;
+    }
+    _tapah2EditingDate = dateStr;
+    const banner     = document.getElementById('tapah2-edit-banner');
+    const bannerText = document.getElementById('tapah2-edit-banner-text');
+    if (banner)     banner.style.display = 'flex';
+    if (bannerText) bannerText.textContent = `Editing Tapah-2: ${dateStr}`;
+    renderTapah2Card(0);
+    updateTapah2Totals();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
+// ── TAPAH-2 REPORT ──────────────────────────────
+
+const _tapah2Expanded = new Set();
+
+window.toggleTapah2Group = (key) => {
+    if (_tapah2Expanded.has(key)) _tapah2Expanded.delete(key);
+    else _tapah2Expanded.add(key);
+    renderTapah2Report(window._tapah2AllData || {});
+};
+
+async function loadTapah2Report() {
+    const container = document.getElementById('tapah2-report-container');
+    if (!container) return;
+    container.innerHTML = '<p style="color:#aaa;text-align:center;padding:30px;">Loading Tapah-2 data…</p>';
+    try {
+        const snap = await db.collection('users').doc(currentUser.uid).collection('tapah2').get();
+        const allData = {};
+        snap.forEach(doc => { allData[doc.id] = doc.data(); });
+        window._tapah2AllData = allData;
+        renderTapah2Report(allData);
+    } catch (err) {
+        container.innerHTML = `<div style="text-align:center;padding:30px;background:#fff0f0;border-radius:10px;color:#e74c3c;">
+            <div style="font-size:24px;margin-bottom:8px;">⚠️</div>
+            <div style="font-weight:700;">Could not load Tapah-2 data</div>
+            <div style="font-size:13px;color:#666;margin:6px 0 14px;">Check your internet connection.</div>
+            <button onclick="loadTapah2Report()" style="padding:8px 20px;background:#3498db;color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer;width:auto;">🔄 Retry</button>
+        </div>`;
+    }
+}
+
+function renderTapah2Report(allData) {
+    const container = document.getElementById('tapah2-report-container');
+    if (!container) return;
+
+    const today          = new Date();
+    const todayStr       = toLocalDateStr(today);
+    const thisWeekSun    = new Date(today); thisWeekSun.setDate(today.getDate() - today.getDay());
+    const thisWeekSunStr = toLocalDateStr(thisWeekSun);
+
+    const allDates = new Set(Object.keys(allData).filter(d => d >= APP_START_DATE));
+    for (let i = 0; i < 7; i++) {
+        const d = new Date(thisWeekSun); d.setDate(thisWeekSun.getDate() + i);
+        const ds = toLocalDateStr(d);
+        if (ds <= todayStr && ds >= APP_START_DATE) allDates.add(ds);
+    }
+    if (allDates.size === 0) {
+        container.innerHTML = '<p style="color:#aaa;text-align:center;padding:30px;">No Tapah-2 data yet. Start tracking!</p>';
+        return;
+    }
+
+    // Group by week then month
+    const weekMap = {};
+    [...allDates].sort().forEach(ds => {
+        const d = new Date(ds + 'T00:00:00');
+        const sun = new Date(d); sun.setDate(d.getDate() - d.getDay());
+        const sunStr = toLocalDateStr(sun);
+        if (!weekMap[sunStr]) weekMap[sunStr] = [];
+        weekMap[sunStr].push(ds);
+    });
+    const monthMap = {};
+    Object.keys(weekMap).sort().forEach(sunStr => {
+        const mk = weekMap[sunStr][0].slice(0, 7);
+        if (!monthMap[mk]) monthMap[mk] = [];
+        monthMap[mk].push(sunStr);
+    });
+
+    const T2M  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const T2ML = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const fmtD = ds => { const d = new Date(ds+'T00:00:00'); return `${String(d.getDate()).padStart(2,'0')} ${T2M[d.getMonth()]}`; };
+    const fmtM = ym => { const [y,m] = ym.split('-'); return `${T2ML[parseInt(m,10)-1]} ${y}`; };
+    const fmtW = sun => { const s = new Date(sun+'T00:00:00'); const e = new Date(s); e.setDate(s.getDate()+6); return `${fmtD(sun)} – ${fmtD(toLocalDateStr(e))}`; };
+    const sCol = pct => pct >= 70 ? '#27ae60' : pct >= 50 ? '#f39c12' : '#e74c3c';
+
+    // Helper: compute category score from an entry
+    const catScore = (entry, catId) => {
+        if (!entry) return null;
+        const catQs = TAPAH2_QUESTIONS.filter(q => q.cat === catId);
+        return catQs.reduce((s, q) => s + (entry.scores?.[q.id] || 0), 0);
+    };
+    const catMax = catId => TAPAH2_QUESTIONS.filter(q => q.cat === catId).reduce((s,q) => s+q.max, 0);
+
+    let html = '';
+    Object.keys(monthMap).sort().reverse().forEach(mk => {
+        const weeks = monthMap[mk].slice().reverse();
+        const mFilled = weeks.flatMap(w => weekMap[w]).filter(d => allData[d]);
+        const mTotal  = mFilled.reduce((s,d) => s+(allData[d]?.totalScore||0), 0);
+        const mMax    = mFilled.length * TAPAH2_MAX;
+        const mPct    = mMax > 0 ? Math.round(mTotal/mMax*100) : 0;
+        const mExpand = _tapah2Expanded.has('month_'+mk);
+
+        html += `<div style="margin-bottom:10px;">
+            <div onclick="toggleTapah2Group('month_${mk}')"
+                style="background:#2c3e50;color:white;padding:12px 16px;border-radius:${mExpand?'8px 8px 0 0':'8px'};cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
+                <div style="font-weight:700;font-size:14px;">${fmtM(mk)}</div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <span style="font-size:13px;color:${sCol(mPct)};font-weight:700;">${mPct}%</span>
+                    <span style="font-size:11px;opacity:0.7;">${mExpand?'▼':'▶'}</span>
+                </div>
+            </div>`;
+
+        if (mExpand) {
+            html += `<div style="background:#f8f9fa;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 8px 8px;padding:8px;">`;
+            weeks.forEach(sunStr => {
+                const wDates  = weekMap[sunStr];
+                const wFilled = wDates.filter(d => allData[d]);
+                const wTotal  = wFilled.reduce((s,d) => s+(allData[d]?.totalScore||0), 0);
+                const wMax    = wFilled.length * TAPAH2_MAX;
+                const wPct    = wMax > 0 ? Math.round(wTotal/wMax*100) : 0;
+                const wExpand = _tapah2Expanded.has('week_'+sunStr);
+                const isCur   = sunStr === thisWeekSunStr;
+
+                html += `<div style="margin-bottom:6px;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+                    <div onclick="toggleTapah2Group('week_${sunStr}')"
+                        style="background:white;padding:12px 16px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;border-left:4px solid #e67e22;">
+                        <div>
+                            <div style="font-weight:700;font-size:13px;color:#2c3e50;">${fmtW(sunStr)}${isCur?' <span style="font-size:10px;background:#e67e22;color:white;padding:1px 7px;border-radius:10px;margin-left:4px;">Current</span>':''}</div>
+                            <div style="font-size:11px;color:#888;margin-top:2px;">${wFilled.length} day(s) filled · ${wTotal}/${wMax} pts</div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <span style="font-size:15px;font-weight:700;color:${sCol(wPct)};">${wPct}%</span>
+                            <span style="font-size:11px;color:#aaa;">${wExpand?'▼':'▶'}</span>
+                        </div>
+                    </div>`;
+
+                if (wExpand) {
+                    html += `<div style="overflow-x:auto;background:white;border-top:1px solid #f0f0f0;">
+                        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                            <thead><tr>
+                                <th style="padding:8px 10px;background:#fef0e7;text-align:left;color:#2c3e50;font-weight:700;white-space:nowrap;min-width:140px;">Category</th>
+                                <th style="padding:8px;background:#fef0e7;text-align:center;color:#888;font-weight:600;">Max</th>`;
+                    wDates.forEach(ds => {
+                        const d = new Date(ds+'T00:00:00');
+                        const day = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()];
+                        html += `<th style="padding:8px;background:#fef0e7;text-align:center;color:#2c3e50;font-weight:600;white-space:nowrap;">${day}<br><span style="font-weight:400;font-size:10px;">${fmtD(ds)}</span></th>`;
+                    });
+                    html += `<th style="padding:8px;background:#fef0e7;text-align:center;color:#e67e22;font-weight:700;">Total</th></tr></thead><tbody>`;
+
+                    TAPAH2_CATS.forEach((cat, ci) => {
+                        const cm   = catMax(cat.id);
+                        const rowBg = ci % 2 === 0 ? '#fff' : '#fafafa';
+                        let rowTotal = 0;
+                        let cells = '';
+                        wDates.forEach(ds => {
+                            const entry = allData[ds];
+                            const sc    = entry ? catScore(entry, cat.id) : null;
+                            if (sc !== null) rowTotal += sc;
+                            const cp  = (sc !== null && sc !== undefined) ? Math.round((sc/cm)*100) : null;
+                            const col = !entry ? '#ccc' : sCol(cp);
+                            cells += `<td style="padding:8px;text-align:center;background:${rowBg};color:${col};font-weight:${entry?'700':'400'};">${entry ? sc : '–'}</td>`;
+                        });
+                        html += `<tr>
+                            <td style="padding:8px 10px;background:${rowBg};color:#2c3e50;font-weight:600;">${cat.emoji} ${cat.label}</td>
+                            <td style="padding:8px;text-align:center;background:${rowBg};color:#aaa;">${cm}</td>
+                            ${cells}
+                            <td style="padding:8px;text-align:center;background:${rowBg};font-weight:700;color:#e67e22;">${rowTotal}</td>
+                        </tr>`;
+                    });
+
+                    // Totals row
+                    html += `<tr style="background:#fef0e7;border-top:2px solid #e67e22;">
+                        <td style="padding:8px 10px;font-weight:700;color:#e67e22;">Total</td>
+                        <td style="padding:8px;text-align:center;color:#aaa;font-weight:700;">${TAPAH2_MAX}</td>`;
+                    wDates.forEach(ds => {
+                        const entry = allData[ds];
+                        const sc    = entry?.totalScore;
+                        const cp    = sc !== undefined ? Math.round((sc/TAPAH2_MAX)*100) : null;
+                        const col   = !entry ? '#ccc' : sCol(cp);
+                        html += `<td style="padding:8px;text-align:center;font-weight:700;color:${col};">${entry ? sc : '–'}</td>`;
+                    });
+                    html += `<td style="padding:8px;text-align:center;font-weight:700;color:#e67e22;">${wFilled.reduce((s,d)=>s+(allData[d]?.totalScore||0),0)}</td></tr>`;
+
+                    const editBtns = wFilled.map(ds =>
+                        `<button onclick="editTapah2Entry('${ds}')" style="width:auto;padding:4px 10px;font-size:11px;background:#e67e22;color:white;border:none;border-radius:6px;cursor:pointer;margin:0;">✏️ ${fmtD(ds)}</button>`
+                    ).join('');
+                    if (editBtns) html += `<tr><td colspan="${wDates.length+3}" style="padding:8px;background:#fff;"><div style="display:flex;gap:6px;flex-wrap:wrap;">${editBtns}</div></td></tr>`;
+
+                    html += `</tbody></table></div>`;
+                }
+                html += `</div>`; // end week
+            });
+            html += `</div>`; // end month body
+        }
+        html += `</div>`; // end month
+    });
+
+    container.innerHTML = html || '<p style="color:#aaa;text-align:center;padding:30px;">No Tapah-2 data yet. Start tracking!</p>';
+}
+
+// ── TAPAH-2 PROGRESS ────────────────────────────
+
+async function loadTapah2Progress() {
+    const ringEl = document.getElementById('tapah2-score-ring-container');
+    if (!ringEl) return;
+    ringEl.innerHTML = '<div style="text-align:center;color:#aaa;padding:20px;">Loading…</div>';
+
+    const today       = new Date();
+    const todayStr    = toLocalDateStr(today);
+    const thisWeekSun = new Date(today); thisWeekSun.setDate(today.getDate() - today.getDay());
+    const from28      = new Date(today); from28.setDate(today.getDate() - 27);
+
+    try {
+        const snap = await db.collection('users').doc(currentUser.uid).collection('tapah2')
+            .where(firebase.firestore.FieldPath.documentId(), '>=', toLocalDateStr(from28))
+            .where(firebase.firestore.FieldPath.documentId(), '<=', todayStr)
+            .get();
+        const data = {};
+        snap.forEach(doc => { data[doc.id] = doc.data(); });
+
+        // Current week ring
+        const weekDates = [];
+        for (let i = 0; i < 7; i++) {
+            const d = new Date(thisWeekSun); d.setDate(thisWeekSun.getDate() + i);
+            const ds = toLocalDateStr(d);
+            if (ds <= todayStr && ds >= APP_START_DATE) weekDates.push(ds);
+        }
+        const filled    = weekDates.filter(d => data[d]);
+        const wTotal    = filled.reduce((s,d) => s+(data[d]?.totalScore||0), 0);
+        const wMax      = filled.length * TAPAH2_MAX;
+        const wPct      = wMax > 0 ? Math.round(wTotal/wMax*100) : 0;
+        const ringColor = wPct >= 70 ? '#27ae60' : wPct >= 50 ? '#f39c12' : '#e74c3c';
+
+        const r = 54, circ = Math.round(2*Math.PI*r);
+        const dash = Math.round(circ * Math.max(0,wPct) / 100);
+
+        const catRows = TAPAH2_CATS.map(cat => {
+            const cm    = TAPAH2_QUESTIONS.filter(q=>q.cat===cat.id).reduce((s,q)=>s+q.max,0);
+            const cFill = filled.length;
+            const cTot  = filled.reduce((s,d) => {
+                const catQs = TAPAH2_QUESTIONS.filter(q=>q.cat===cat.id);
+                return s + catQs.reduce((ss,q) => ss+(data[d]?.scores?.[q.id]||0), 0);
+            }, 0);
+            const cMax  = cFill * cm;
+            const cp    = cMax > 0 ? Math.round(cTot/cMax*100) : 0;
+            const cc    = cp >= 70 ? '#27ae60' : cp >= 50 ? '#f39c12' : '#e74c3c';
+            return `<div style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:12px;">
+                <span style="font-size:14px;">${cat.emoji}</span>
+                <span style="flex:1;color:#555;">${cat.label}</span>
+                <span style="font-weight:700;color:${cc};">${cTot}/${cMax}</span>
+            </div>`;
+        }).join('');
+
+        ringEl.innerHTML = `<div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+            <div style="position:relative;flex-shrink:0;">
+                <svg width="130" height="130" style="transform:rotate(-90deg)">
+                    <circle cx="65" cy="65" r="${r}" fill="none" stroke="#e0e0e0" stroke-width="10"/>
+                    <circle cx="65" cy="65" r="${r}" fill="none" stroke="${ringColor}" stroke-width="10"
+                        stroke-dasharray="${dash} ${circ}" stroke-linecap="round"/>
+                </svg>
+                <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;">
+                    <div style="font-size:22px;font-weight:800;color:${ringColor};">${wPct}%</div>
+                    <div style="font-size:10px;color:#888;">This week</div>
+                </div>
+            </div>
+            <div style="flex:1;min-width:160px;">
+                <div style="font-weight:700;font-size:14px;color:#2c3e50;margin-bottom:6px;">📿 Tapah-2 — This Week</div>
+                <div style="font-size:12px;color:#666;margin-bottom:4px;">${filled.length} of ${weekDates.length} days filled</div>
+                <div style="font-size:15px;font-weight:700;color:${ringColor};margin-bottom:8px;">${wTotal} / ${wMax} pts</div>
+                ${catRows}
+            </div>
+        </div>`;
+
+        // Line chart
+        const dates28   = [];
+        for (let i=27;i>=0;i--) { const d=new Date(today);d.setDate(today.getDate()-i);const ds=toLocalDateStr(d);if(ds>=APP_START_DATE)dates28.push(ds); }
+        const labels    = dates28.map(ds=>{const d=new Date(ds+'T00:00:00');return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;});
+        const chartData = dates28.map(ds => data[ds]?.totalScore ?? null);
+
+        const canvas = document.getElementById('tapah2-score-chart');
+        if (!canvas) return;
+        if (_tapah2Chart) { _tapah2Chart.destroy(); _tapah2Chart = null; }
+        _tapah2Chart = new Chart(canvas, {
+            type: 'line',
+            data: { labels, datasets: [{ label: 'Tapah-2', data: chartData, borderColor: '#e67e22', backgroundColor: 'rgba(230,126,34,0.08)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#e67e22', spanGaps: false, tension: 0.3 }] },
+            options: { responsive: true, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.y} / ${TAPAH2_MAX}` } } },
+                scales: { y: { beginAtZero: true, max: TAPAH2_MAX, grid: { color: 'rgba(0,0,0,0.06)' }, ticks: { stepSize: Math.ceil(TAPAH2_MAX/5) } }, x: { grid: { display: false }, ticks: { maxRotation: 45, font: { size: 10 } } } } }
+        });
+    } catch (err) {
+        if (ringEl) ringEl.innerHTML = `<div style="color:#e74c3c;padding:20px;text-align:center;">Error: ${err.message}</div>`;
+    }
+}
+
+// ── END TAPAH-2 MODULE ──
 
 // ══════════════════════════════════════════════
 // --- ACTIVITY ANALYSIS MODAL ---

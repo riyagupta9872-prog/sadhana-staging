@@ -466,6 +466,91 @@
                 </div>
             </div><!-- /tapah-main-tab -->
 
+            <!-- ========== TAPAH-2 TAB ========== -->
+            <div id="tapah2-main-tab" class="main-tab-content" style="display:none;">
+                <!-- Sub-tabs -->
+                <div style="display:flex;gap:0;background:white;border-radius:12px;overflow:hidden;margin-bottom:16px;box-shadow:0 2px 6px rgba(0,0,0,0.06);">
+                    <button onclick="switchSubTab('tapah2','entry')" class="sub-tab-btn tapah2-sub active"
+                        style="flex:1;padding:12px;border:none;background:#e67e22;color:white;font-weight:600;font-size:13px;cursor:pointer;margin:0;border-radius:0;">📿 Entry</button>
+                    <button onclick="switchSubTab('tapah2','reports')" class="sub-tab-btn tapah2-sub"
+                        style="flex:1;padding:12px;border:none;background:#f0f0f0;color:#666;font-weight:600;font-size:13px;cursor:pointer;margin:0;border-radius:0;">📄 Reports</button>
+                    <button onclick="switchSubTab('tapah2','progress')" class="sub-tab-btn tapah2-sub"
+                        style="flex:1;padding:12px;border:none;background:#f0f0f0;color:#666;font-weight:600;font-size:13px;cursor:pointer;margin:0;border-radius:0;">📈 Progress</button>
+                </div>
+
+                <!-- Tapah-2 Entry sub-tab -->
+                <div id="tapah2-entry-subtab" class="tapah2-subtab-content">
+                    <div id="tapah2-tab">
+                        <div id="tapah2-edit-banner" style="display:none;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:10px 15px;margin-bottom:12px;align-items:center;justify-content:space-between;gap:10px;">
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <span style="font-size:18px;">✏️</span>
+                                <span id="tapah2-edit-banner-text" style="font-weight:600;color:#856404;"></span>
+                            </div>
+                            <button onclick="cancelTapah2Edit()" style="width:auto;padding:5px 14px;background:#6c757d;font-size:13px;margin:0;border-radius:6px;">✕ Cancel Edit</button>
+                        </div>
+                        <div class="card" style="margin-bottom:16px;padding:14px 18px;">
+                            <label><strong>Date:</strong></label>
+                            <select id="tapah2-date" required></select>
+                        </div>
+                        <!-- Flashcard area -->
+                        <div id="tapah2-flashcard-area" class="card" style="margin-bottom:16px;padding:0;overflow:hidden;position:relative;min-height:380px;">
+                            <div style="background:#f0f0f0;height:5px;">
+                                <div id="tapah2-progress-bar" style="height:5px;background:linear-gradient(90deg,#e67e22,#f39c12);width:0%;transition:width 0.4s ease;border-radius:3px;"></div>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 18px 0;">
+                                <span id="tapah2-card-counter" style="font-size:12px;color:#888;font-weight:600;">Q 1 / 28</span>
+                                <span style="font-size:11px;padding:2px 10px;border-radius:20px;font-weight:700;background:#fef0e7;color:#e67e22;">📿 Tapah-2</span>
+                            </div>
+                            <!-- Active card — fully rendered by renderTapah2Card() -->
+                            <div id="tapah2-card" style="transition:opacity 0.2s ease,transform 0.2s ease;"></div>
+                            <!-- Done screen -->
+                            <div id="tapah2-done-screen" style="display:none;padding:30px 20px;text-align:center;">
+                                <div style="font-size:48px;margin-bottom:12px;">📿</div>
+                                <div style="font-weight:700;font-size:18px;color:#e67e22;margin-bottom:6px;">All Done!</div>
+                                <div id="tapah2-done-score" style="font-size:28px;font-weight:700;color:#2c3e50;margin-bottom:4px;"></div>
+                                <div id="tapah2-done-pct" style="font-size:14px;color:#888;margin-bottom:20px;"></div>
+                                <button type="button" onclick="tapah2FlashReview()"
+                                    style="width:auto;padding:10px 24px;background:#f8f9fa;color:#2c3e50;border:2px solid #ddd;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;">
+                                    👁 Review
+                                </button>
+                            </div>
+                        </div>
+                        <!-- Category mini-score badges -->
+                        <div id="tapah2-category-totals" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;"></div>
+                        <!-- Total bar -->
+                        <div style="display:flex;align-items:center;justify-content:space-between;background:white;border-radius:12px;padding:14px 18px;box-shadow:0 2px 8px rgba(0,0,0,0.07);margin-bottom:16px;">
+                            <div>
+                                <div style="font-size:11px;color:#e67e22;font-weight:600;margin-bottom:2px;">Total Score</div>
+                                <div id="tapah2-total-display" style="font-size:1.6em;font-weight:800;color:#e67e22;">0/41</div>
+                            </div>
+                            <div style="text-align:right;">
+                                <div style="font-size:11px;color:#888;font-weight:600;margin-bottom:2px;">Percentage</div>
+                                <div id="tapah2-percent-display" style="font-size:1.6em;font-weight:800;color:#2c3e50;">0%</div>
+                            </div>
+                        </div>
+                        <button type="button" id="tapah2-submit-btn" onclick="submitTapah2()"
+                            style="background:#e67e22;width:100%;padding:14px;color:white;border:none;border-radius:10px;font-weight:700;font-size:15px;cursor:pointer;display:none;">
+                            📿 Submit Tapah-2
+                        </button>
+                    </div><!-- /tapah2-tab -->
+                </div><!-- /tapah2-entry-subtab -->
+
+                <!-- Tapah-2 Reports sub-tab -->
+                <div id="tapah2-reports-subtab" class="tapah2-subtab-content" style="display:none;">
+                    <div id="tapah2-report-container"></div>
+                </div>
+
+                <!-- Tapah-2 Progress sub-tab -->
+                <div id="tapah2-progress-subtab" class="tapah2-subtab-content" style="display:none;">
+                    <div class="card">
+                        <div id="tapah2-score-ring-container" style="padding:16px;background:#f8f9fa;border-radius:10px;margin-bottom:20px;"></div>
+                        <h4 style="margin:0 0 10px;color:var(--primary);">📈 Tapah-2 Progress (Last 28 Days)</h4>
+                        <canvas id="tapah2-score-chart"></canvas>
+                        <div style="text-align:center;color:#888;font-size:12px;margin-top:6px;">Daily max: 41 marks</div>
+                    </div>
+                </div>
+            </div><!-- /tapah2-main-tab -->
+
             <!-- Hidden elements for backward compat -->
             <div id="reports-tab" class="tab-content hidden" style="display:none!important;"></div>
             <div id="charts-tab" class="tab-content hidden" style="display:none!important;"></div>
@@ -490,7 +575,11 @@
             </button>
             <button onclick="switchMainTab('tapah')" class="bottom-nav-btn" data-tab="tapah"
                 style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;padding:6px 4px;cursor:pointer;margin:0;color:#999;font-size:10px;font-weight:600;">
-                <span style="font-size:22px;">🔥</span> Tapah
+                <span style="font-size:20px;">🔥</span> Tapah
+            </button>
+            <button onclick="switchMainTab('tapah2')" class="bottom-nav-btn" data-tab="tapah2"
+                style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;padding:6px 4px;cursor:pointer;margin:0;color:#999;font-size:10px;font-weight:600;">
+                <span style="font-size:20px;">📿</span> Tapah-2
             </button>
             <button onclick="openProfileEdit()" class="bottom-nav-btn" data-tab="settings"
                 style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;padding:6px 4px;cursor:pointer;margin:0;color:#999;font-size:10px;font-weight:600;">
