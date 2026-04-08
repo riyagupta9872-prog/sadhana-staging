@@ -63,167 +63,11 @@ function getNRData(date) {
 // --- 3. DOWNLOAD EXCEL LOGIC ---
 window.downloadUserExcel = async (userId, userName) => {
     try {
-        if (typeof XLSX === 'undefined') {
-            alert("Excel Library not loaded. Please wait 2 seconds and try again.");
-            return;
-        }
-
+        if (typeof XLSX === 'undefined') { alert("Excel Library not loaded. Please wait 2 seconds and try again."); return; }
         const snap = await db.collection('users').doc(userId).collection('sadhana').get();
         if (snap.empty) { alert("No data found to download."); return; }
-
-        // ── Style helpers ─────────────────────────────────────────────────
-        const bdr = (c = "BBBBBB") => ({ top:{style:"thin",color:{rgb:c}}, bottom:{style:"thin",color:{rgb:c}}, left:{style:"thin",color:{rgb:c}}, right:{style:"thin",color:{rgb:c}} });
-        const fill = (rgb) => ({ fgColor:{rgb}, patternType:"solid" });
-        const f = (opts) => ({ sz:9, ...opts });
-
-        const S = {
-            weekHdr:  { font:f({bold:true,sz:12,color:{rgb:"1A3650"}}), fill:fill("9DC3E6"), alignment:{horizontal:"center",vertical:"center"}, border:bdr("9DC3E6") },
-            colHdr:   { font:f({bold:true,color:{rgb:"1A3650"}}), fill:fill("BDD7EE"), alignment:{horizontal:"center",vertical:"center",wrapText:true}, border:bdr() },
-            dayName:  { font:f({bold:true}), alignment:{horizontal:"left",vertical:"center"}, border:bdr() },
-            dayNR:    { font:f({bold:true,color:{rgb:"9C0006"}}), fill:fill("FFE0E0"), alignment:{horizontal:"left",vertical:"center"}, border:bdr() },
-            normal:   { font:f({}), alignment:{horizontal:"center",vertical:"center"}, border:bdr() },
-            nrVal:    { font:f({bold:true,color:{rgb:"9C0006"}}), fill:fill("FFCCCC"), alignment:{horizontal:"center",vertical:"center"}, border:bdr() },
-            mksPos:   { font:f({bold:true,color:{rgb:"006100"}}), fill:fill("C6EFCE"), alignment:{horizontal:"center",vertical:"center"}, border:bdr() },
-            mksNeg:   { font:f({bold:true,color:{rgb:"9C0006"}}), fill:fill("FFC7CE"), alignment:{horizontal:"center",vertical:"center"}, border:bdr() },
-            mksZero:  { font:f({color:{rgb:"888888"}}), fill:fill("F5F5F5"), alignment:{horizontal:"center",vertical:"center"}, border:bdr() },
-            totalLbl: { font:f({bold:true,color:{rgb:"1A3650"}}), fill:fill("DEEAF1"), alignment:{horizontal:"left",vertical:"center"}, border:bdr() },
-            totalRow: { font:f({bold:true,color:{rgb:"1A3650"}}), fill:fill("DEEAF1"), alignment:{horizontal:"center",vertical:"center"}, border:bdr() },
-            overall:  { font:f({bold:true,sz:10,color:{rgb:"FFFFFF"}}), fill:fill("2E75B6"), alignment:{horizontal:"center",vertical:"center"}, border:bdr("2E75B6") },
-            pctGood:  { font:f({bold:true,color:{rgb:"006100"}}), fill:fill("C6EFCE"), alignment:{horizontal:"center",vertical:"center"}, border:bdr() },
-            pctOk:    { font:f({bold:true,color:{rgb:"7D6608"}}), fill:fill("FFEB9C"), alignment:{horizontal:"center",vertical:"center"}, border:bdr() },
-            pctBad:   { font:f({bold:true,color:{rgb:"9C0006"}}), fill:fill("FFC7CE"), alignment:{horizontal:"center",vertical:"center"}, border:bdr() },
-        };
-
-        // ── Build data ────────────────────────────────────────────────────
-        const weeksData = {};
-        snap.forEach(doc => {
-            const weekInfo = getWeekInfo(doc.id);
-            if (!weeksData[weekInfo.sunStr]) {
-                weeksData[weekInfo.sunStr] = { label: weekInfo.label, sunStr: weekInfo.sunStr, days: {} };
-            }
-            weeksData[weekInfo.sunStr].days[doc.id] = doc.data();
-        });
-
-        const sortedWeeks = Object.keys(weeksData).sort((a, b) => b.localeCompare(a)); // newest first → current week on top
-        const dataArray = [];
-        const rowMeta = [];
-
-        sortedWeeks.forEach((sunStr, weekIndex) => {
-            const week = weeksData[sunStr];
-
-            dataArray.push([`WEEK: ${week.label}`, ...Array(17).fill('')]);
-            rowMeta.push({ type: 'weekHdr' });
-
-            dataArray.push(['Day', '1.To Bed', 'Mks', '2. Wake Up', 'Mks', '3. Japa', 'Mks', '4. MP', 'Mks', '5. DS', 'Mks', '6. Pathan', 'Mks', '7. Sarwan', 'Mks', '8. Ntes Rev.', 'Mks', 'Day Wise']);
-            rowMeta.push({ type: 'colHdr' });
-
-            const wt = { sleepM:0, wakeupM:0, morningProgramM:0, chantingM:0, readingM:0, hearingM:0, notesM:0, daySleepM:0, readingMins:0, hearingMins:0, notesMins:0, total:0 };
-            const weekStart = new Date(week.sunStr + 'T00:00:00');
-            const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-
-            for (let i = 0; i < 7; i++) {
-                const d = new Date(weekStart); d.setDate(d.getDate() + i);
-                const dateStr = toLocalDateStr(d);
-                const dayLabel = `${dayNames[i]} ${String(d.getDate()).padStart(2,'0')}`;
-                const hasEntry = !!week.days[dateStr];
-                const entry = week.days[dateStr] || getNRData(dateStr);
-
-                wt.sleepM += entry.scores?.sleep ?? 0;
-                wt.wakeupM += entry.scores?.wakeup ?? 0;
-                wt.morningProgramM += entry.scores?.morningProgram ?? 0;
-                wt.chantingM += entry.scores?.chanting ?? 0;
-                wt.readingM += entry.scores?.reading ?? 0;
-                wt.hearingM += entry.scores?.hearing ?? 0;
-                wt.notesM += entry.scores?.notes ?? 0;
-                wt.daySleepM += entry.scores?.daySleep ?? 0;
-                wt.readingMins += entry.readingMinutes === 'NR' ? 0 : (entry.readingMinutes || 0);
-                wt.hearingMins += entry.hearingMinutes === 'NR' ? 0 : (entry.hearingMinutes || 0);
-                wt.notesMins += entry.notesMinutes === 'NR' ? 0 : (entry.notesMinutes || 0);
-                wt.total += entry.totalScore ?? 0;
-
-                dataArray.push([
-                    dayLabel,
-                    entry.sleepTime || 'NR', entry.scores?.sleep ?? 0,
-                    entry.wakeupTime || 'NR', entry.scores?.wakeup ?? 0,
-                    entry.chantingTime || 'NR', entry.scores?.chanting ?? 0,
-                    entry.morningProgramTime || 'NR', entry.scores?.morningProgram ?? 0,
-                    entry.daySleepMinutes !== 'NR' ? entry.daySleepMinutes : 'NR', entry.scores?.daySleep ?? 0,
-                    entry.readingMinutes !== 'NR' ? entry.readingMinutes : 'NR', entry.scores?.reading ?? 0,
-                    entry.hearingMinutes !== 'NR' ? entry.hearingMinutes : 'NR', entry.scores?.hearing ?? 0,
-                    entry.notesMinutes !== 'NR' ? entry.notesMinutes : 'NR', entry.scores?.notes ?? 0,
-                    (entry.dayPercent ?? 0) + '%'
-                ]);
-                rowMeta.push({ type: 'day', isNR: !hasEntry, scores: entry.scores, dayPercent: entry.dayPercent ?? 0 });
-            }
-
-            let adjNotesM = wt.notesM;
-            if (wt.notesMins >= 245) adjNotesM = 175;
-            const adjTotal = wt.total - wt.notesM + adjNotesM;
-            const weekPct = Math.round((adjTotal / 1225) * 100);
-
-            dataArray.push(['Total/1225', '', wt.sleepM, '', wt.wakeupM, '', wt.chantingM, '', wt.morningProgramM, '', wt.daySleepM, wt.readingMins, wt.readingM, wt.hearingMins, wt.hearingM, wt.notesMins, adjNotesM, '']);
-            rowMeta.push({ type: 'total' });
-
-            dataArray.push(['Sadhna %', '', `${Math.round((wt.sleepM/175)*100)}%`, '', `${Math.round((wt.wakeupM/175)*100)}%`, '', `${Math.round((wt.chantingM/175)*100)}%`, '', `${Math.round((wt.morningProgramM/175)*100)}%`, '', `${Math.round((wt.daySleepM/70)*100)}%`, '', `${Math.round((wt.readingM/175)*100)}%`, '', `${Math.round((wt.hearingM/175)*100)}%`, '', `${Math.round((adjNotesM/175)*100)}%`, '']);
-            rowMeta.push({ type: 'total' });
-
-            dataArray.push([`OVERALL  ${weekPct}%`, ...Array(17).fill('')]);
-            rowMeta.push({ type: 'overall' });
-
-            if (weekIndex < sortedWeeks.length - 1) {
-                dataArray.push(Array(18).fill(''));
-                rowMeta.push({ type: 'blank' });
-                dataArray.push(Array(18).fill(''));
-                rowMeta.push({ type: 'blank' });
-            }
-        });
-
-        // ── Build worksheet & apply styles ────────────────────────────────
-        const ws = XLSX.utils.aoa_to_sheet(dataArray);
-        ws['!cols'] = [{wch:10},{wch:8},{wch:4},{wch:9},{wch:4},{wch:8},{wch:4},{wch:8},{wch:4},{wch:7},{wch:4},{wch:8},{wch:4},{wch:8},{wch:4},{wch:10},{wch:4},{wch:8}];
-        ws['!rows'] = rowMeta.map(m => ({ hpt: m.type === 'weekHdr' ? 22 : m.type === 'colHdr' ? 28 : 16 }));
-        ws['!merges'] = [];
-
-        const NUM_COLS = 18;
-        const MKS_COLS = new Set([2,4,6,8,10,12,14,16]);
-        const TIME_COLS = new Set([1,3,5,7,9,11,13,15]);
-
-        rowMeta.forEach((meta, r) => {
-            // Merges for full-width rows
-            if (meta.type === 'weekHdr' || meta.type === 'overall') {
-                ws['!merges'].push({ s:{r,c:0}, e:{r,c:NUM_COLS-1} });
-            }
-            for (let c = 0; c < NUM_COLS; c++) {
-                const ref = XLSX.utils.encode_cell({r, c});
-                if (!ws[ref]) ws[ref] = { v:'', t:'s' };
-                const cell = ws[ref];
-
-                if (meta.type === 'weekHdr') {
-                    cell.s = S.weekHdr;
-                } else if (meta.type === 'colHdr') {
-                    cell.s = S.colHdr;
-                } else if (meta.type === 'day') {
-                    if (c === 0) {
-                        cell.s = meta.isNR ? S.dayNR : S.dayName;
-                    } else if (c === 17) {
-                        const pct = meta.dayPercent;
-                        cell.s = pct >= 60 ? S.pctGood : pct >= 0 ? S.pctOk : S.pctBad;
-                    } else if (MKS_COLS.has(c)) {
-                        const v = typeof cell.v === 'number' ? cell.v : 0;
-                        cell.s = v > 0 ? S.mksPos : v < 0 ? S.mksNeg : S.mksZero;
-                    } else if (TIME_COLS.has(c)) {
-                        cell.s = cell.v === 'NR' ? S.nrVal : S.normal;
-                    }
-                } else if (meta.type === 'total') {
-                    cell.s = c === 0 ? S.totalLbl : S.totalRow;
-                } else if (meta.type === 'overall') {
-                    cell.s = S.overall;
-                }
-            }
-        });
-
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Sadhna History');
+        XLSX.utils.book_append_sheet(wb, _buildSadhnaWs(snap), 'Sadhna History');
         XLSX.writeFile(wb, `${userName}_Sadhna_History.xlsx`);
     } catch (err) {
         console.error(err);
@@ -501,15 +345,21 @@ window.downloadTapahExcel = async () => {
     try {
         const snap = await db.collection('users').doc(currentUser.uid).collection('tapah').get();
         if (snap.empty) { alert('No Tapah data found to download.'); return; }
-
         const docs = [];
         snap.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
         docs.sort((a,b) => a.id.localeCompare(b.id));
-
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, _buildTapahWs(docs), 'Tapah History');
+        XLSX.writeFile(wb, `${userProfile?.name || 'My'}_Tapah_History.xlsx`);
+    } catch (err) {
+        alert('Could not download. Error: ' + (err.code || err.message));
+    }
+};
+// ── Tapah worksheet builder ────────────────────────────────────────
+function _buildTapahWs(docs) {
         const dates   = docs.map(d => d.id);
         const numCols = 2 + dates.length + 2;
 
-        // ── Style helpers ──────────────────────────────
         const thinGrey  = { style: 'thin',   color: { rgb: 'BBBBBB' } };
         const medDark   = { style: 'medium',  color: { rgb: '555555' } };
         const medGreen  = { style: 'medium',  color: { rgb: '1A7A3C' } };
@@ -632,14 +482,8 @@ window.downloadTapahExcel = async () => {
 
         ws['!cols'] = [{ wch: 44 }, { wch: 8 }, ...dates.map(() => ({ wch: 14 })), { wch: 14 }, { wch: 10 }];
         ws['!rows'] = rowMeta.map(m => ({ hpt: m.h }));
-
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Tapah History');
-        XLSX.writeFile(wb, `${userProfile?.name || 'My'}_Tapah_History.xlsx`);
-    } catch (err) {
-        alert('Could not download. Error: ' + (err.code || err.message));
-    }
-};
+        return ws;
+}
 
 // --- 3D. TAPAH EXCEL IMPORT ---
 window.importTapahExcel = async (input) => {
@@ -751,11 +595,19 @@ window.downloadTapah2Excel = async () => {
     try {
         const snap = await db.collection('users').doc(currentUser.uid).collection('tapah2').get();
         if (snap.empty) { alert('No Tapah-2 data found to download.'); return; }
-
         const docs = [];
         snap.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
         docs.sort((a,b) => a.id.localeCompare(b.id));
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, _buildTapah2Ws(docs), 'Tapah-2 History');
+        XLSX.writeFile(wb, `${userProfile?.name || 'My'}_Tapah2_History.xlsx`);
+    } catch (err) {
+        alert('Could not download. Error: ' + (err.code || err.message));
+    }
+};
 
+// ── Tapah-2 worksheet builder ──────────────────────────────────────
+function _buildTapah2Ws(docs) {
         const dates = docs.map(d => d.id);
         const numCols = 2 + dates.length + 2;
 
@@ -859,14 +711,8 @@ window.downloadTapah2Excel = async () => {
 
         ws['!cols'] = [{ wch: 46 }, { wch: 7 }, ...dates.map(() => ({ wch: 11 })), { wch: 14 }, { wch: 10 }];
         ws['!rows'] = rowMeta.map(m => ({ hpt: m.h }));
-
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Tapah-2 History');
-        XLSX.writeFile(wb, `${userProfile?.name || 'My'}_Tapah2_History.xlsx`);
-    } catch (err) {
-        alert('Could not download. Error: ' + (err.code || err.message));
-    }
-};
+        return ws;
+}
 
 // --- 3F. TAPAH-2 EXCEL IMPORT ---
 window.importTapah2Excel = async (input) => {
@@ -962,6 +808,90 @@ window.importTapah2Excel = async (input) => {
     }
 };
 
+// ── Sadhna worksheet builder ───────────────────────────────────────
+function _buildSadhnaWs(snap) {
+    const bdr = (c = "BBBBBB") => ({ top:{style:"thin",color:{rgb:c}}, bottom:{style:"thin",color:{rgb:c}}, left:{style:"thin",color:{rgb:c}}, right:{style:"thin",color:{rgb:c}} });
+    const fill = (rgb) => ({ fgColor:{rgb}, patternType:"solid" });
+    const f = (opts) => ({ sz:9, ...opts });
+    const S = {
+        weekHdr:  { font:f({bold:true,sz:12,color:{rgb:"1A3650"}}), fill:fill("9DC3E6"), alignment:{horizontal:"center",vertical:"center"}, border:bdr("9DC3E6") },
+        colHdr:   { font:f({bold:true,color:{rgb:"1A3650"}}), fill:fill("BDD7EE"), alignment:{horizontal:"center",vertical:"center",wrapText:true}, border:bdr() },
+        dayName:  { font:f({bold:true}), alignment:{horizontal:"left",vertical:"center"}, border:bdr() },
+        dayNR:    { font:f({bold:true,color:{rgb:"9C0006"}}), fill:fill("FFE0E0"), alignment:{horizontal:"left",vertical:"center"}, border:bdr() },
+        normal:   { font:f({}), alignment:{horizontal:"center",vertical:"center"}, border:bdr() },
+        nrVal:    { font:f({bold:true,color:{rgb:"9C0006"}}), fill:fill("FFCCCC"), alignment:{horizontal:"center",vertical:"center"}, border:bdr() },
+        mksPos:   { font:f({bold:true,color:{rgb:"006100"}}), fill:fill("C6EFCE"), alignment:{horizontal:"center",vertical:"center"}, border:bdr() },
+        mksNeg:   { font:f({bold:true,color:{rgb:"9C0006"}}), fill:fill("FFC7CE"), alignment:{horizontal:"center",vertical:"center"}, border:bdr() },
+        mksZero:  { font:f({color:{rgb:"888888"}}), fill:fill("F5F5F5"), alignment:{horizontal:"center",vertical:"center"}, border:bdr() },
+        totalLbl: { font:f({bold:true,color:{rgb:"1A3650"}}), fill:fill("DEEAF1"), alignment:{horizontal:"left",vertical:"center"}, border:bdr() },
+        totalRow: { font:f({bold:true,color:{rgb:"1A3650"}}), fill:fill("DEEAF1"), alignment:{horizontal:"center",vertical:"center"}, border:bdr() },
+        overall:  { font:f({bold:true,sz:10,color:{rgb:"FFFFFF"}}), fill:fill("2E75B6"), alignment:{horizontal:"center",vertical:"center"}, border:bdr("2E75B6") },
+        pctGood:  { font:f({bold:true,color:{rgb:"006100"}}), fill:fill("C6EFCE"), alignment:{horizontal:"center",vertical:"center"}, border:bdr() },
+        pctOk:    { font:f({bold:true,color:{rgb:"7D6608"}}), fill:fill("FFEB9C"), alignment:{horizontal:"center",vertical:"center"}, border:bdr() },
+        pctBad:   { font:f({bold:true,color:{rgb:"9C0006"}}), fill:fill("FFC7CE"), alignment:{horizontal:"center",vertical:"center"}, border:bdr() },
+    };
+    const weeksData = {};
+    snap.forEach(doc => {
+        const wi = getWeekInfo(doc.id);
+        if (!weeksData[wi.sunStr]) weeksData[wi.sunStr] = { label: wi.label, sunStr: wi.sunStr, days: {} };
+        weeksData[wi.sunStr].days[doc.id] = doc.data();
+    });
+    const sortedWeeks = Object.keys(weeksData).sort((a,b) => b.localeCompare(a));
+    const dataArray = [], rowMeta = [];
+    const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    sortedWeeks.forEach((sunStr, weekIndex) => {
+        const week = weeksData[sunStr];
+        dataArray.push([`WEEK: ${week.label}`, ...Array(17).fill('')]); rowMeta.push({ type:'weekHdr' });
+        dataArray.push(['Day','1.To Bed','Mks','2. Wake Up','Mks','3. Japa','Mks','4. MP','Mks','5. DS','Mks','6. Pathan','Mks','7. Sarwan','Mks','8. Ntes Rev.','Mks','Day Wise']); rowMeta.push({ type:'colHdr' });
+        const wt = { sleepM:0,wakeupM:0,morningProgramM:0,chantingM:0,readingM:0,hearingM:0,notesM:0,daySleepM:0,readingMins:0,hearingMins:0,notesMins:0,total:0 };
+        const weekStart = new Date(week.sunStr + 'T00:00:00');
+        for (let i = 0; i < 7; i++) {
+            const d = new Date(weekStart); d.setDate(d.getDate() + i);
+            const dateStr = toLocalDateStr(d);
+            const hasEntry = !!week.days[dateStr];
+            const entry = week.days[dateStr] || getNRData(dateStr);
+            wt.sleepM += entry.scores?.sleep??0; wt.wakeupM += entry.scores?.wakeup??0;
+            wt.morningProgramM += entry.scores?.morningProgram??0; wt.chantingM += entry.scores?.chanting??0;
+            wt.readingM += entry.scores?.reading??0; wt.hearingM += entry.scores?.hearing??0;
+            wt.notesM += entry.scores?.notes??0; wt.daySleepM += entry.scores?.daySleep??0;
+            wt.readingMins += entry.readingMinutes==='NR'?0:(entry.readingMinutes||0);
+            wt.hearingMins += entry.hearingMinutes==='NR'?0:(entry.hearingMinutes||0);
+            wt.notesMins   += entry.notesMinutes==='NR'?0:(entry.notesMinutes||0);
+            wt.total += entry.totalScore??0;
+            dataArray.push([`${dayNames[i]} ${String(d.getDate()).padStart(2,'0')}`,entry.sleepTime||'NR',entry.scores?.sleep??0,entry.wakeupTime||'NR',entry.scores?.wakeup??0,entry.chantingTime||'NR',entry.scores?.chanting??0,entry.morningProgramTime||'NR',entry.scores?.morningProgram??0,entry.daySleepMinutes!=='NR'?entry.daySleepMinutes:'NR',entry.scores?.daySleep??0,entry.readingMinutes!=='NR'?entry.readingMinutes:'NR',entry.scores?.reading??0,entry.hearingMinutes!=='NR'?entry.hearingMinutes:'NR',entry.scores?.hearing??0,entry.notesMinutes!=='NR'?entry.notesMinutes:'NR',entry.scores?.notes??0,(entry.dayPercent??0)+'%']);
+            rowMeta.push({ type:'day', isNR:!hasEntry, scores:entry.scores, dayPercent:entry.dayPercent??0 });
+        }
+        let adjNotesM = wt.notesM; if (wt.notesMins >= 245) adjNotesM = 175;
+        const adjTotal = wt.total - wt.notesM + adjNotesM;
+        const weekPct = Math.round((adjTotal/1225)*100);
+        dataArray.push(['Total/1225','',wt.sleepM,'',wt.wakeupM,'',wt.chantingM,'',wt.morningProgramM,'',wt.daySleepM,wt.readingMins,wt.readingM,wt.hearingMins,wt.hearingM,wt.notesMins,adjNotesM,'']); rowMeta.push({ type:'total' });
+        dataArray.push(['Sadhna %','',`${Math.round((wt.sleepM/175)*100)}%`,'',`${Math.round((wt.wakeupM/175)*100)}%`,'',`${Math.round((wt.chantingM/175)*100)}%`,'',`${Math.round((wt.morningProgramM/175)*100)}%`,'',`${Math.round((wt.daySleepM/70)*100)}%`,'',`${Math.round((wt.readingM/175)*100)}%`,'',`${Math.round((wt.hearingM/175)*100)}%`,'',`${Math.round((adjNotesM/175)*100)}%`,'']); rowMeta.push({ type:'total' });
+        dataArray.push([`OVERALL  ${weekPct}%`, ...Array(17).fill('')]); rowMeta.push({ type:'overall' });
+        if (weekIndex < sortedWeeks.length - 1) { dataArray.push(Array(18).fill('')); rowMeta.push({ type:'blank' }); dataArray.push(Array(18).fill('')); rowMeta.push({ type:'blank' }); }
+    });
+    const ws = XLSX.utils.aoa_to_sheet(dataArray);
+    ws['!cols'] = [{wch:10},{wch:8},{wch:4},{wch:9},{wch:4},{wch:8},{wch:4},{wch:8},{wch:4},{wch:7},{wch:4},{wch:8},{wch:4},{wch:8},{wch:4},{wch:10},{wch:4},{wch:8}];
+    ws['!rows'] = rowMeta.map(m => ({ hpt: m.type==='weekHdr'?22:m.type==='colHdr'?28:16 }));
+    ws['!merges'] = [];
+    const NUM_COLS=18, MKS_COLS=new Set([2,4,6,8,10,12,14,16]), TIME_COLS=new Set([1,3,5,7,9,11,13,15]);
+    rowMeta.forEach((meta,r) => {
+        if (meta.type==='weekHdr'||meta.type==='overall') ws['!merges'].push({ s:{r,c:0}, e:{r,c:NUM_COLS-1} });
+        for (let c=0;c<NUM_COLS;c++) {
+            const ref=XLSX.utils.encode_cell({r,c}); if (!ws[ref]) ws[ref]={v:'',t:'s'}; const cell=ws[ref];
+            if (meta.type==='weekHdr') cell.s=S.weekHdr;
+            else if (meta.type==='colHdr') cell.s=S.colHdr;
+            else if (meta.type==='day') {
+                if (c===0) cell.s=meta.isNR?S.dayNR:S.dayName;
+                else if (c===17) { const p=meta.dayPercent; cell.s=p>=60?S.pctGood:p>=0?S.pctOk:S.pctBad; }
+                else if (MKS_COLS.has(c)) { const v=typeof cell.v==='number'?cell.v:0; cell.s=v>0?S.mksPos:v<0?S.mksNeg:S.mksZero; }
+                else if (TIME_COLS.has(c)) cell.s=cell.v==='NR'?S.nrVal:S.normal;
+            } else if (meta.type==='total') cell.s=c===0?S.totalLbl:S.totalRow;
+            else if (meta.type==='overall') cell.s=S.overall;
+        }
+    });
+    return ws;
+}
+
 // --- 3G. MASTER EXCEL DOWNLOAD (all 3 tabs) ---
 window.downloadMasterExcel = async () => {
     if (!currentUser) { alert('Please login first.'); return; }
@@ -972,78 +902,20 @@ window.downloadMasterExcel = async () => {
             db.collection('users').doc(currentUser.uid).collection('tapah').get(),
             db.collection('users').doc(currentUser.uid).collection('tapah2').get(),
         ]);
-
         const wb = XLSX.utils.book_new();
 
-        // ── Sheet 1: Sadhna (existing format) ──
         if (!sadhnaSnap.empty) {
-            const weeksData = {};
-            sadhnaSnap.forEach(doc => {
-                const wi = getWeekInfo(doc.id);
-                if (!weeksData[wi.sunStr]) weeksData[wi.sunStr] = { label: wi.label, sunStr: wi.sunStr, days: {} };
-                weeksData[wi.sunStr].days[doc.id] = doc.data();
-            });
-            const sortedWeeks = Object.keys(weeksData).sort((a,b) => b.localeCompare(a));
-            const dataArray = [];
-            const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-            sortedWeeks.forEach((sunStr, wi) => {
-                const week = weeksData[sunStr];
-                dataArray.push([`WEEK: ${week.label}`]);
-                dataArray.push(['Day','1.To Bed','Mks','2. Wake Up','Mks','3. Japa','Mks','4. MP','Mks','5. DS','Mks','6. Pathan','Mks','7. Sarwan','Mks','8. Ntes Rev.','Mks','Day Wise']);
-                let wt = { sleepM:0,wakeupM:0,morningProgramM:0,chantingM:0,readingM:0,hearingM:0,notesM:0,daySleepM:0,readingMins:0,hearingMins:0,notesMins:0,total:0 };
-                const weekStart = new Date(week.sunStr + 'T00:00:00');
-                for (let i = 0; i < 7; i++) {
-                    const cd = new Date(weekStart); cd.setDate(weekStart.getDate() + i);
-                    const ds = toLocalDateStr(cd);
-                    const entry = week.days[ds] || getNRData(ds);
-                    const readMins = entry.readingMinutes === 'NR' ? 0 : (entry.readingMinutes || 0);
-                    const hearMins = entry.hearingMinutes === 'NR' ? 0 : (entry.hearingMinutes || 0);
-                    const notesMins = entry.notesMinutes === 'NR' ? 0 : (entry.notesMinutes || 0);
-                    wt.sleepM += entry.scores?.sleep ?? 0; wt.wakeupM += entry.scores?.wakeup ?? 0;
-                    wt.morningProgramM += entry.scores?.morningProgram ?? 0; wt.chantingM += entry.scores?.chanting ?? 0;
-                    wt.readingM += entry.scores?.reading ?? 0; wt.hearingM += entry.scores?.hearing ?? 0;
-                    wt.notesM += entry.scores?.notes ?? 0; wt.daySleepM += entry.scores?.daySleep ?? 0;
-                    wt.readingMins += readMins; wt.hearingMins += hearMins; wt.notesMins += notesMins;
-                    wt.total += entry.totalScore ?? 0;
-                    dataArray.push([`${dayNames[i]} ${String(cd.getDate()).padStart(2,'0')}`,entry.sleepTime||'NR',entry.scores?.sleep??0,entry.wakeupTime||'NR',entry.scores?.wakeup??0,entry.chantingTime||'NR',entry.scores?.chanting??0,entry.morningProgramTime||'NR',entry.scores?.morningProgram??0,entry.daySleepMinutes!=='NR'?entry.daySleepMinutes:'NR',entry.scores?.daySleep??0,entry.readingMinutes!=='NR'?entry.readingMinutes:'NR',entry.scores?.reading??0,entry.hearingMinutes!=='NR'?entry.hearingMinutes:'NR',entry.scores?.hearing??0,entry.notesMinutes!=='NR'?entry.notesMinutes:'NR',entry.scores?.notes??0,(entry.dayPercent??0)+'%']);
-                }
-                const adjNotes = wt.notesMins >= 245 ? 175 : wt.notesM;
-                const adjTotal = wt.total - wt.notesM + adjNotes;
-                dataArray.push(['Total/1225','',wt.sleepM,'',wt.wakeupM,'',wt.chantingM,'',wt.morningProgramM,'',wt.daySleepM,wt.readingMins,wt.readingM,wt.hearingMins,wt.hearingM,wt.notesMins,adjNotes,'']);
-                dataArray.push(['OVERALL',Math.round((adjTotal/1225)*100)+'%']);
-                if (wi < sortedWeeks.length - 1) dataArray.push([],[]);
-            });
-            const ws1 = XLSX.utils.aoa_to_sheet(dataArray);
-            XLSX.utils.book_append_sheet(wb, ws1, 'Sadhna');
+            XLSX.utils.book_append_sheet(wb, _buildSadhnaWs(sadhnaSnap), 'Sadhna');
         }
-
-        // ── Sheet 2: Tapah ──
         if (!tapahSnap.empty) {
-            const header = ['Date',...ANUKUL_QUESTIONS.map(q=>q.label),...PRATIKUL_QUESTIONS.map(q=>q.label),'Anukul Total','Pratikul Total','Total /50','Percent'];
-            const rows = [header];
-            const docs2 = [];
-            tapahSnap.forEach(doc => docs2.push({ id: doc.id, ...doc.data() }));
-            docs2.sort((a,b) => b.id.localeCompare(a.id));
-            docs2.forEach(d => {
-                rows.push([d.id,...ANUKUL_QUESTIONS.map(q=>d.anukul?.[q.id]||'no'),...PRATIKUL_QUESTIONS.map(q=>d.pratikul?.[q.id]||'no'),d.anukulTotal??0,d.pratikulTotal??0,d.totalScore??0,(d.percent??0)+'%']);
-            });
-            const ws2 = XLSX.utils.aoa_to_sheet(rows);
-            XLSX.utils.book_append_sheet(wb, ws2, 'Tapah');
+            const docs = []; tapahSnap.forEach(doc => docs.push({ id:doc.id, ...doc.data() }));
+            docs.sort((a,b) => a.id.localeCompare(b.id));
+            XLSX.utils.book_append_sheet(wb, _buildTapahWs(docs), 'Tapah');
         }
-
-        // ── Sheet 3: Tapah-2 ──
         if (!tapah2Snap.empty) {
-            const header = ['Date',...TAPAH2_QUESTIONS.map(q=>`${q.catLabel}|${q.label}(max${q.max})`),...TAPAH2_CATS.map(c=>`${c.label} Total`),'Total Score','Percent'];
-            const rows = [header];
-            const docs3 = [];
-            tapah2Snap.forEach(doc => docs3.push({ id: doc.id, ...doc.data() }));
-            docs3.sort((a,b) => b.id.localeCompare(a.id));
-            docs3.forEach(d => {
-                const catTotals = TAPAH2_CATS.map(cat => TAPAH2_QUESTIONS.filter(q=>q.cat===cat.id).reduce((s,q)=>s+(d.scores?.[q.id]||0),0));
-                rows.push([d.id,...TAPAH2_QUESTIONS.map(q=>d.scores?.[q.id]??0),...catTotals,d.totalScore??0,(d.percent??0)+'%']);
-            });
-            const ws3 = XLSX.utils.aoa_to_sheet(rows);
-            XLSX.utils.book_append_sheet(wb, ws3, 'Tapah-2');
+            const docs = []; tapah2Snap.forEach(doc => docs.push({ id:doc.id, ...doc.data() }));
+            docs.sort((a,b) => a.id.localeCompare(b.id));
+            XLSX.utils.book_append_sheet(wb, _buildTapah2Ws(docs), 'Tapah-2');
         }
 
         if (wb.SheetNames.length === 0) { alert('No data found across any tab.'); return; }
