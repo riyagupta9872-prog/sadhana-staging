@@ -504,53 +504,135 @@ window.downloadTapahExcel = async () => {
 
         const docs = [];
         snap.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
-        docs.sort((a,b) => a.id.localeCompare(b.id)); // oldest → newest (left→right)
+        docs.sort((a,b) => a.id.localeCompare(b.id));
 
-        const dates = docs.map(d => d.id);
-        // Rows: Question | Max | date1 | date2 | ... | Total Obtained | Total Max
-        const header = ['Question', 'Max/day', ...dates, 'Total Obtained', 'Total Max'];
-        const rows = [header];
+        const dates   = docs.map(d => d.id);
+        const numCols = 2 + dates.length + 2;
 
-        // Anukul section header
-        rows.push(['🌿 ANUKULASYA (Favourable)', '', ...dates.map(() => ''), '', '']);
+        // ── Style helpers ──────────────────────────────
+        const thinGrey  = { style: 'thin',   color: { rgb: 'BBBBBB' } };
+        const medDark   = { style: 'medium',  color: { rgb: '555555' } };
+        const medGreen  = { style: 'medium',  color: { rgb: '1A7A3C' } };
+        const medRed    = { style: 'medium',  color: { rgb: 'A93226' } };
+        const medNavy   = { style: 'medium',  color: { rgb: '1E4D8C' } };
+        const allThin   = { top: thinGrey, bottom: thinGrey, left: thinGrey, right: thinGrey };
+        const allMedDrk = { top: medDark,  bottom: medDark,  left: medDark,  right: medDark  };
+
+        const S = {
+            header:    { font:{ bold:true, sz:11, color:{ rgb:'FFFFFF' } }, fill:{ patternType:'solid', fgColor:{ rgb:'2C3E50' } }, alignment:{ horizontal:'center', vertical:'center', wrapText:true }, border: allMedDrk },
+            hdrLabel:  { font:{ bold:true, sz:11, color:{ rgb:'FFFFFF' } }, fill:{ patternType:'solid', fgColor:{ rgb:'2C3E50' } }, alignment:{ horizontal:'left',   vertical:'center', wrapText:true }, border: allMedDrk },
+            anuHdr:    { font:{ bold:true, sz:12, color:{ rgb:'FFFFFF' } }, fill:{ patternType:'solid', fgColor:{ rgb:'1D6A39' } }, alignment:{ horizontal:'left',   vertical:'center' }, border:{ top:medGreen, bottom:medGreen, left:medGreen, right:medGreen } },
+            anuHdrC:   { font:{ bold:true, sz:12, color:{ rgb:'FFFFFF' } }, fill:{ patternType:'solid', fgColor:{ rgb:'1D6A39' } }, alignment:{ horizontal:'center', vertical:'center' }, border:{ top:medGreen, bottom:medGreen, left:medGreen, right:medGreen } },
+            praHdr:    { font:{ bold:true, sz:12, color:{ rgb:'FFFFFF' } }, fill:{ patternType:'solid', fgColor:{ rgb:'922B21' } }, alignment:{ horizontal:'left',   vertical:'center' }, border:{ top:medRed,   bottom:medRed,   left:medRed,   right:medRed   } },
+            praHdrC:   { font:{ bold:true, sz:12, color:{ rgb:'FFFFFF' } }, fill:{ patternType:'solid', fgColor:{ rgb:'922B21' } }, alignment:{ horizontal:'center', vertical:'center' }, border:{ top:medRed,   bottom:medRed,   left:medRed,   right:medRed   } },
+            qLabel:    { font:{ sz:10, color:{ rgb:'2C3E50' } }, fill:{ patternType:'solid', fgColor:{ rgb:'F4FBF7' } }, alignment:{ horizontal:'left',   vertical:'center' }, border: allThin },
+            qCell:     { font:{ sz:10, color:{ rgb:'2C3E50' } }, fill:{ patternType:'solid', fgColor:{ rgb:'F4FBF7' } }, alignment:{ horizontal:'center', vertical:'center' }, border: allThin },
+            qLabelR:   { font:{ sz:10, color:{ rgb:'2C3E50' } }, fill:{ patternType:'solid', fgColor:{ rgb:'FDF3F2' } }, alignment:{ horizontal:'left',   vertical:'center' }, border: allThin },
+            qCellR:    { font:{ sz:10, color:{ rgb:'2C3E50' } }, fill:{ patternType:'solid', fgColor:{ rgb:'FDF3F2' } }, alignment:{ horizontal:'center', vertical:'center' }, border: allThin },
+            subGreen:  { font:{ bold:true, sz:10, color:{ rgb:'FFFFFF' } }, fill:{ patternType:'solid', fgColor:{ rgb:'27AE60' } }, alignment:{ horizontal:'center', vertical:'center' }, border:{ top:medGreen, bottom:medGreen, left:medGreen, right:medGreen } },
+            subGreenL: { font:{ bold:true, sz:10, color:{ rgb:'FFFFFF' } }, fill:{ patternType:'solid', fgColor:{ rgb:'27AE60' } }, alignment:{ horizontal:'left',   vertical:'center' }, border:{ top:medGreen, bottom:medGreen, left:medGreen, right:medGreen } },
+            subRed:    { font:{ bold:true, sz:10, color:{ rgb:'FFFFFF' } }, fill:{ patternType:'solid', fgColor:{ rgb:'E74C3C' } }, alignment:{ horizontal:'center', vertical:'center' }, border:{ top:medRed,   bottom:medRed,   left:medRed,   right:medRed   } },
+            subRedL:   { font:{ bold:true, sz:10, color:{ rgb:'FFFFFF' } }, fill:{ patternType:'solid', fgColor:{ rgb:'E74C3C' } }, alignment:{ horizontal:'left',   vertical:'center' }, border:{ top:medRed,   bottom:medRed,   left:medRed,   right:medRed   } },
+            gtLabel:   { font:{ bold:true, sz:11, color:{ rgb:'FFFFFF' } }, fill:{ patternType:'solid', fgColor:{ rgb:'1A5276' } }, alignment:{ horizontal:'left',   vertical:'center' }, border:{ top:medNavy,  bottom:medNavy,  left:medNavy,  right:medNavy  } },
+            gtCell:    { font:{ bold:true, sz:11, color:{ rgb:'FFFFFF' } }, fill:{ patternType:'solid', fgColor:{ rgb:'1A5276' } }, alignment:{ horizontal:'center', vertical:'center' }, border:{ top:medNavy,  bottom:medNavy,  left:medNavy,  right:medNavy  } },
+            pctLabel:  { font:{ bold:true, sz:11, color:{ rgb:'FFFFFF' } }, fill:{ patternType:'solid', fgColor:{ rgb:'117A65' } }, alignment:{ horizontal:'left',   vertical:'center' }, border:{ top:medNavy,  bottom:medNavy,  left:medNavy,  right:medNavy  } },
+            pctCell:   { font:{ bold:true, sz:11, color:{ rgb:'FFFFFF' } }, fill:{ patternType:'solid', fgColor:{ rgb:'117A65' } }, alignment:{ horizontal:'center', vertical:'center' }, border:{ top:medNavy,  bottom:medNavy,  left:medNavy,  right:medNavy  } },
+        };
+
+        // ── Build rows + metadata ──────────────────────
+        const rows    = [];
+        const rowMeta = [];
+
+        rows.push(['Question', 'Max/day', ...dates, 'Total Obtained', 'Total Max']);
+        rowMeta.push({ type:'header', h:22 });
+
+        // Anukul section
+        rows.push(['🌿  ANUKULASYA (Favourable)', '', ...dates.map(()=>''), '', '']);
+        rowMeta.push({ type:'anuHdr', h:20 });
 
         ANUKUL_QUESTIONS.forEach(q => {
             let rowTotal = 0;
             const cells = docs.map(d => {
                 const val = d.anukul?.[q.id] || 'no';
-                const sc = getAanukulScore(val);
+                const sc  = getAanukulScore(val);
                 rowTotal += sc;
                 return `${val==='yes'?'Y':val==='partial'?'P':'N'} (${sc>=0?'+':''}${sc})`;
             });
-            rows.push([q.label, 5, ...cells, rowTotal, docs.length * 5]);
+            rows.push([`    ${q.label}`, 5, ...cells, rowTotal, docs.length * 5]);
+            rowMeta.push({ type:'qAnukul', h:16 });
         });
 
-        // Pratikul section header
-        rows.push(['🚫 PRATIKULASYA (Unfavourable)', '', ...dates.map(() => ''), '', '']);
+        rows.push(['🌿  Anukul Total', 25,
+            ...docs.map(d => d.anukulTotal ?? 0),
+            docs.reduce((s,d) => s+(d.anukulTotal ?? 0), 0), docs.length * 25]);
+        rowMeta.push({ type:'subAnukul', h:18 });
+
+        // Spacer
+        rows.push(Array(numCols).fill(''));
+        rowMeta.push({ type:'spacer', h:6 });
+
+        // Pratikul section
+        rows.push(['🚫  PRATIKULASYA (Unfavourable)', '', ...dates.map(()=>''), '', '']);
+        rowMeta.push({ type:'praHdr', h:20 });
 
         PRATIKUL_QUESTIONS.forEach(q => {
             let rowTotal = 0;
             const cells = docs.map(d => {
                 const val = d.pratikul?.[q.id] || 'no';
-                const sc = getPratikulScore(val);
+                const sc  = getPratikulScore(val);
                 rowTotal += sc;
                 return `${val==='yes'?'Y':val==='partial'?'P':'N'} (${sc>=0?'+':''}${sc})`;
             });
-            rows.push([q.label, 5, ...cells, rowTotal, docs.length * 5]);
+            rows.push([`    ${q.label}`, 5, ...cells, rowTotal, docs.length * 5]);
+            rowMeta.push({ type:'qPratikul', h:16 });
         });
 
-        // Totals rows
-        rows.push(['', '', ...dates.map(() => ''), '', '']);
-        rows.push(['Anukul Total', 25, ...docs.map(d => d.anukulTotal ?? 0),
-            docs.reduce((s,d) => s+(d.anukulTotal||0),0), docs.length*25]);
-        rows.push(['Pratikul Total', 25, ...docs.map(d => d.pratikulTotal ?? 0),
-            docs.reduce((s,d) => s+(d.pratikulTotal||0),0), docs.length*25]);
-        rows.push(['Grand Total', 50, ...docs.map(d => d.totalScore ?? 0),
-            docs.reduce((s,d) => s+(d.totalScore||0),0), docs.length*50]);
-        rows.push(['Percent', '100%', ...docs.map(d => (d.percent ?? 0)+'%'), '', '']);
+        rows.push(['🚫  Pratikul Total', 25,
+            ...docs.map(d => d.pratikulTotal ?? 0),
+            docs.reduce((s,d) => s+(d.pratikulTotal ?? 0), 0), docs.length * 25]);
+        rowMeta.push({ type:'subPratikul', h:18 });
 
+        // Spacer
+        rows.push(Array(numCols).fill(''));
+        rowMeta.push({ type:'spacer', h:6 });
+
+        // Grand total / percent
+        rows.push(['Grand Total', 50,
+            ...docs.map(d => d.totalScore ?? 0),
+            docs.reduce((s,d) => s+(d.totalScore ?? 0), 0), docs.length * 50]);
+        rowMeta.push({ type:'grandTotal', h:20 });
+
+        rows.push(['Percent', '100%', ...docs.map(d => (d.percent ?? 0)+'%'), '', '']);
+        rowMeta.push({ type:'percent', h:18 });
+
+        // ── Build worksheet ────────────────────────────
         const ws = XLSX.utils.aoa_to_sheet(rows);
-        ws['!cols'] = [{ wch: 42 }, { wch: 8 }, ...dates.map(() => ({ wch: 14 })), { wch: 14 }, { wch: 10 }];
+
+        // ── Apply styles ───────────────────────────────
+        rows.forEach((row, ri) => {
+            const meta = rowMeta[ri];
+            for (let ci = 0; ci < numCols; ci++) {
+                const addr = XLSX.utils.encode_cell({ r: ri, c: ci });
+                if (!ws[addr]) ws[addr] = { v: '', t: 's' };
+                const isLabel = ci === 0;
+                switch (meta.type) {
+                    case 'header':     ws[addr].s = isLabel ? S.hdrLabel  : S.header;    break;
+                    case 'anuHdr':     ws[addr].s = isLabel ? S.anuHdr    : S.anuHdrC;   break;
+                    case 'qAnukul':    ws[addr].s = isLabel ? S.qLabel    : S.qCell;     break;
+                    case 'subAnukul':  ws[addr].s = isLabel ? S.subGreenL : S.subGreen;  break;
+                    case 'praHdr':     ws[addr].s = isLabel ? S.praHdr    : S.praHdrC;   break;
+                    case 'qPratikul':  ws[addr].s = isLabel ? S.qLabelR   : S.qCellR;    break;
+                    case 'subPratikul':ws[addr].s = isLabel ? S.subRedL   : S.subRed;    break;
+                    case 'grandTotal': ws[addr].s = isLabel ? S.gtLabel   : S.gtCell;    break;
+                    case 'percent':    ws[addr].s = isLabel ? S.pctLabel  : S.pctCell;   break;
+                    default: break; // spacer
+                }
+            }
+        });
+
+        ws['!cols'] = [{ wch: 44 }, { wch: 8 }, ...dates.map(() => ({ wch: 14 })), { wch: 14 }, { wch: 10 }];
+        ws['!rows'] = rowMeta.map(m => ({ hpt: m.h }));
+
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Tapah History');
         XLSX.writeFile(wb, `${userProfile?.name || 'My'}_Tapah_History.xlsx`);
