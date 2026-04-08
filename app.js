@@ -69,11 +69,32 @@ window.downloadUserExcel = async (userId, userName) => {
         }
 
         const snap = await db.collection('users').doc(userId).collection('sadhana').get();
-        if (snap.empty) {
-            alert("No data found to download.");
-            return;
-        }
+        if (snap.empty) { alert("No data found to download."); return; }
 
+        // ── Style helpers ─────────────────────────────────────────────────
+        const bdr = (c = "BBBBBB") => ({ top:{style:"thin",color:{rgb:c}}, bottom:{style:"thin",color:{rgb:c}}, left:{style:"thin",color:{rgb:c}}, right:{style:"thin",color:{rgb:c}} });
+        const fill = (rgb) => ({ fgColor:{rgb}, patternType:"solid" });
+        const f = (opts) => ({ sz:9, ...opts });
+
+        const S = {
+            weekHdr:  { font:f({bold:true,sz:12,color:{rgb:"1A3650"}}), fill:fill("9DC3E6"), alignment:{horizontal:"center",vertical:"center"}, border:bdr("9DC3E6") },
+            colHdr:   { font:f({bold:true,color:{rgb:"1A3650"}}), fill:fill("BDD7EE"), alignment:{horizontal:"center",vertical:"center",wrapText:true}, border:bdr() },
+            dayName:  { font:f({bold:true}), alignment:{horizontal:"left",vertical:"center"}, border:bdr() },
+            dayNR:    { font:f({bold:true,color:{rgb:"9C0006"}}), fill:fill("FFE0E0"), alignment:{horizontal:"left",vertical:"center"}, border:bdr() },
+            normal:   { font:f({}), alignment:{horizontal:"center",vertical:"center"}, border:bdr() },
+            nrVal:    { font:f({bold:true,color:{rgb:"9C0006"}}), fill:fill("FFCCCC"), alignment:{horizontal:"center",vertical:"center"}, border:bdr() },
+            mksPos:   { font:f({bold:true,color:{rgb:"006100"}}), fill:fill("C6EFCE"), alignment:{horizontal:"center",vertical:"center"}, border:bdr() },
+            mksNeg:   { font:f({bold:true,color:{rgb:"9C0006"}}), fill:fill("FFC7CE"), alignment:{horizontal:"center",vertical:"center"}, border:bdr() },
+            mksZero:  { font:f({color:{rgb:"888888"}}), fill:fill("F5F5F5"), alignment:{horizontal:"center",vertical:"center"}, border:bdr() },
+            totalLbl: { font:f({bold:true,color:{rgb:"1A3650"}}), fill:fill("DEEAF1"), alignment:{horizontal:"left",vertical:"center"}, border:bdr() },
+            totalRow: { font:f({bold:true,color:{rgb:"1A3650"}}), fill:fill("DEEAF1"), alignment:{horizontal:"center",vertical:"center"}, border:bdr() },
+            overall:  { font:f({bold:true,sz:10,color:{rgb:"FFFFFF"}}), fill:fill("2E75B6"), alignment:{horizontal:"center",vertical:"center"}, border:bdr("2E75B6") },
+            pctGood:  { font:f({bold:true,color:{rgb:"006100"}}), fill:fill("C6EFCE"), alignment:{horizontal:"center",vertical:"center"}, border:bdr() },
+            pctOk:    { font:f({bold:true,color:{rgb:"7D6608"}}), fill:fill("FFEB9C"), alignment:{horizontal:"center",vertical:"center"}, border:bdr() },
+            pctBad:   { font:f({bold:true,color:{rgb:"9C0006"}}), fill:fill("FFC7CE"), alignment:{horizontal:"center",vertical:"center"}, border:bdr() },
+        };
+
+        // ── Build data ────────────────────────────────────────────────────
         const weeksData = {};
         snap.forEach(doc => {
             const weekInfo = getWeekInfo(doc.id);
@@ -83,44 +104,46 @@ window.downloadUserExcel = async (userId, userName) => {
             weeksData[weekInfo.sunStr].days[doc.id] = doc.data();
         });
 
-        const sortedWeeks = Object.keys(weeksData).sort((a, b) => b.localeCompare(a));
+        const sortedWeeks = Object.keys(weeksData).sort((a, b) => b.localeCompare(a)); // newest first → current week on top
         const dataArray = [];
+        const rowMeta = [];
 
         sortedWeeks.forEach((sunStr, weekIndex) => {
             const week = weeksData[sunStr];
-            dataArray.push([`WEEK: ${week.label}`, '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
-            dataArray.push(['Day', '1.To Bed', 'Mks', '2. Wake Up', 'Mks', '3. Japa', 'Mks', '4. MP', 'Mks', '5. DS', 'Mks', '6. Pathan', 'Mks', '7. Sarwan', 'Mks', '8. Ntes Rev.', 'Mks', 'Day Wise']);
 
-            let weekTotals = { sleepM: 0, wakeupM: 0, morningProgramM: 0, chantingM: 0, readingM: 0, hearingM: 0, notesM: 0, daySleepM: 0, readingMins: 0, hearingMins: 0, notesMins: 0, daySleepMins: 0, total: 0 };
+            dataArray.push([`WEEK: ${week.label}`, ...Array(17).fill('')]);
+            rowMeta.push({ type: 'weekHdr' });
+
+            dataArray.push(['Day', '1.To Bed', 'Mks', '2. Wake Up', 'Mks', '3. Japa', 'Mks', '4. MP', 'Mks', '5. DS', 'Mks', '6. Pathan', 'Mks', '7. Sarwan', 'Mks', '8. Ntes Rev.', 'Mks', 'Day Wise']);
+            rowMeta.push({ type: 'colHdr' });
+
+            const wt = { sleepM:0, wakeupM:0, morningProgramM:0, chantingM:0, readingM:0, hearingM:0, notesM:0, daySleepM:0, readingMins:0, hearingMins:0, notesMins:0, total:0 };
             const weekStart = new Date(week.sunStr + 'T00:00:00');
-            const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
             for (let i = 0; i < 7; i++) {
-                const currentDate = new Date(weekStart);
-                currentDate.setDate(currentDate.getDate() + i);
-                const dateStr = toLocalDateStr(currentDate);
-                const dayLabel = `${dayNames[i]} ${String(currentDate.getDate()).padStart(2, '0')}`;
+                const d = new Date(weekStart); d.setDate(d.getDate() + i);
+                const dateStr = toLocalDateStr(d);
+                const dayLabel = `${dayNames[i]} ${String(d.getDate()).padStart(2,'0')}`;
+                const hasEntry = !!week.days[dateStr];
                 const entry = week.days[dateStr] || getNRData(dateStr);
 
-                const readMins = entry.readingMinutes === 'NR' ? 0 : (entry.readingMinutes || 0);
-                const hearMins = entry.hearingMinutes === 'NR' ? 0 : (entry.hearingMinutes || 0);
-                const notesMins = entry.notesMinutes === 'NR' ? 0 : (entry.notesMinutes || 0);
-
-                weekTotals.sleepM += entry.scores?.sleep ?? 0;
-                weekTotals.wakeupM += entry.scores?.wakeup ?? 0;
-                weekTotals.morningProgramM += entry.scores?.morningProgram ?? 0;
-                weekTotals.chantingM += entry.scores?.chanting ?? 0;
-                weekTotals.readingM += entry.scores?.reading ?? 0;
-                weekTotals.hearingM += entry.scores?.hearing ?? 0;
-                weekTotals.notesM += entry.scores?.notes ?? 0;
-                weekTotals.daySleepM += entry.scores?.daySleep ?? 0;
-                weekTotals.readingMins += readMins;
-                weekTotals.hearingMins += hearMins;
-                weekTotals.notesMins += notesMins;
-                weekTotals.total += entry.totalScore ?? 0;
+                wt.sleepM += entry.scores?.sleep ?? 0;
+                wt.wakeupM += entry.scores?.wakeup ?? 0;
+                wt.morningProgramM += entry.scores?.morningProgram ?? 0;
+                wt.chantingM += entry.scores?.chanting ?? 0;
+                wt.readingM += entry.scores?.reading ?? 0;
+                wt.hearingM += entry.scores?.hearing ?? 0;
+                wt.notesM += entry.scores?.notes ?? 0;
+                wt.daySleepM += entry.scores?.daySleep ?? 0;
+                wt.readingMins += entry.readingMinutes === 'NR' ? 0 : (entry.readingMinutes || 0);
+                wt.hearingMins += entry.hearingMinutes === 'NR' ? 0 : (entry.hearingMinutes || 0);
+                wt.notesMins += entry.notesMinutes === 'NR' ? 0 : (entry.notesMinutes || 0);
+                wt.total += entry.totalScore ?? 0;
 
                 dataArray.push([
-                    dayLabel, entry.sleepTime || 'NR', entry.scores?.sleep ?? 0,
+                    dayLabel,
+                    entry.sleepTime || 'NR', entry.scores?.sleep ?? 0,
                     entry.wakeupTime || 'NR', entry.scores?.wakeup ?? 0,
                     entry.chantingTime || 'NR', entry.scores?.chanting ?? 0,
                     entry.morningProgramTime || 'NR', entry.scores?.morningProgram ?? 0,
@@ -130,29 +153,80 @@ window.downloadUserExcel = async (userId, userName) => {
                     entry.notesMinutes !== 'NR' ? entry.notesMinutes : 'NR', entry.scores?.notes ?? 0,
                     (entry.dayPercent ?? 0) + '%'
                 ]);
+                rowMeta.push({ type: 'day', isNR: !hasEntry, scores: entry.scores, dayPercent: entry.dayPercent ?? 0 });
             }
 
-            let adjustedNotesM = weekTotals.notesM;
-            if (weekTotals.notesMins >= 245) adjustedNotesM = 175;
-            const adjustedTotal = weekTotals.total - weekTotals.notesM + adjustedNotesM;
-            const weekPercent = Math.round((adjustedTotal / 1225) * 100);
+            let adjNotesM = wt.notesM;
+            if (wt.notesMins >= 245) adjNotesM = 175;
+            const adjTotal = wt.total - wt.notesM + adjNotesM;
+            const weekPct = Math.round((adjTotal / 1225) * 100);
 
-            dataArray.push(['Total/1225', '', weekTotals.sleepM, '', weekTotals.wakeupM, '', weekTotals.chantingM, '', weekTotals.morningProgramM, '', weekTotals.daySleepM, weekTotals.readingMins, weekTotals.readingM, weekTotals.hearingMins, weekTotals.hearingM, weekTotals.notesMins, adjustedNotesM, '']);
-            dataArray.push(['Sadhna %', '', Math.round((weekTotals.sleepM/175)*100)+'%', '', Math.round((weekTotals.wakeupM/175)*100)+'%', '', Math.round((weekTotals.chantingM/175)*100)+'%', '', Math.round((weekTotals.morningProgramM/175)*100)+'%', '', Math.round((weekTotals.daySleepM/70)*100)+'%', '', Math.round((weekTotals.readingM/175)*100)+'%', '', Math.round((weekTotals.hearingM/175)*100)+'%', '', Math.round((adjustedNotesM/175)*100)+'%', '']);
-            dataArray.push(['OVERALL', weekPercent + '%', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
+            dataArray.push(['Total/1225', '', wt.sleepM, '', wt.wakeupM, '', wt.chantingM, '', wt.morningProgramM, '', wt.daySleepM, wt.readingMins, wt.readingM, wt.hearingMins, wt.hearingM, wt.notesMins, adjNotesM, '']);
+            rowMeta.push({ type: 'total' });
+
+            dataArray.push(['Sadhna %', '', `${Math.round((wt.sleepM/175)*100)}%`, '', `${Math.round((wt.wakeupM/175)*100)}%`, '', `${Math.round((wt.chantingM/175)*100)}%`, '', `${Math.round((wt.morningProgramM/175)*100)}%`, '', `${Math.round((wt.daySleepM/70)*100)}%`, '', `${Math.round((wt.readingM/175)*100)}%`, '', `${Math.round((wt.hearingM/175)*100)}%`, '', `${Math.round((adjNotesM/175)*100)}%`, '']);
+            rowMeta.push({ type: 'total' });
+
+            dataArray.push([`OVERALL  ${weekPct}%`, ...Array(17).fill('')]);
+            rowMeta.push({ type: 'overall' });
 
             if (weekIndex < sortedWeeks.length - 1) {
-                dataArray.push(['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
-                dataArray.push(['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
+                dataArray.push(Array(18).fill(''));
+                rowMeta.push({ type: 'blank' });
+                dataArray.push(Array(18).fill(''));
+                rowMeta.push({ type: 'blank' });
             }
         });
 
-        const worksheet = XLSX.utils.aoa_to_sheet(dataArray);
-        worksheet['!cols'] = [{wch:10},{wch:8},{wch:4},{wch:8},{wch:4},{wch:8},{wch:4},{wch:8},{wch:4},{wch:10},{wch:4},{wch:10},{wch:4},{wch:10},{wch:4},{wch:12},{wch:4},{wch:8},{wch:6}];
-        const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, 'Sadhna History');
-        XLSX.writeFile(workbook, `${userName}_Sadhna_History.xlsx`);
-    } catch (error) {
+        // ── Build worksheet & apply styles ────────────────────────────────
+        const ws = XLSX.utils.aoa_to_sheet(dataArray);
+        ws['!cols'] = [{wch:10},{wch:8},{wch:4},{wch:9},{wch:4},{wch:8},{wch:4},{wch:8},{wch:4},{wch:7},{wch:4},{wch:8},{wch:4},{wch:8},{wch:4},{wch:10},{wch:4},{wch:8}];
+        ws['!rows'] = rowMeta.map(m => ({ hpt: m.type === 'weekHdr' ? 22 : m.type === 'colHdr' ? 28 : 16 }));
+        ws['!merges'] = [];
+
+        const NUM_COLS = 18;
+        const MKS_COLS = new Set([2,4,6,8,10,12,14,16]);
+        const TIME_COLS = new Set([1,3,5,7,9,11,13,15]);
+
+        rowMeta.forEach((meta, r) => {
+            // Merges for full-width rows
+            if (meta.type === 'weekHdr' || meta.type === 'overall') {
+                ws['!merges'].push({ s:{r,c:0}, e:{r,c:NUM_COLS-1} });
+            }
+            for (let c = 0; c < NUM_COLS; c++) {
+                const ref = XLSX.utils.encode_cell({r, c});
+                if (!ws[ref]) ws[ref] = { v:'', t:'s' };
+                const cell = ws[ref];
+
+                if (meta.type === 'weekHdr') {
+                    cell.s = S.weekHdr;
+                } else if (meta.type === 'colHdr') {
+                    cell.s = S.colHdr;
+                } else if (meta.type === 'day') {
+                    if (c === 0) {
+                        cell.s = meta.isNR ? S.dayNR : S.dayName;
+                    } else if (c === 17) {
+                        const pct = meta.dayPercent;
+                        cell.s = pct >= 60 ? S.pctGood : pct >= 0 ? S.pctOk : S.pctBad;
+                    } else if (MKS_COLS.has(c)) {
+                        const v = typeof cell.v === 'number' ? cell.v : 0;
+                        cell.s = v > 0 ? S.mksPos : v < 0 ? S.mksNeg : S.mksZero;
+                    } else if (TIME_COLS.has(c)) {
+                        cell.s = cell.v === 'NR' ? S.nrVal : S.normal;
+                    }
+                } else if (meta.type === 'total') {
+                    cell.s = c === 0 ? S.totalLbl : S.totalRow;
+                } else if (meta.type === 'overall') {
+                    cell.s = S.overall;
+                }
+            }
+        });
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Sadhna History');
+        XLSX.writeFile(wb, `${userName}_Sadhna_History.xlsx`);
+    } catch (err) {
+        console.error(err);
         alert("Could not download Excel. Please check your internet connection and try again.");
     }
 };
@@ -598,43 +672,112 @@ window.downloadTapah2Excel = async () => {
 
         const docs = [];
         snap.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
-        docs.sort((a,b) => a.id.localeCompare(b.id)); // oldest → newest
+        docs.sort((a,b) => a.id.localeCompare(b.id));
 
         const dates = docs.map(d => d.id);
-        const header = ['Question', 'Max/day', ...dates, 'Total Obtained', 'Total Max'];
-        const rows = [header];
+        const numCols = 2 + dates.length + 2;
+
+        // ── Style helpers ──────────────────────────────
+        const thinGrey   = { style: 'thin',   color: { rgb: 'BBBBBB' } };
+        const medDark    = { style: 'medium',  color: { rgb: '555555' } };
+        const medOrange  = { style: 'medium',  color: { rgb: 'CC5500' } };
+        const medGreen   = { style: 'medium',  color: { rgb: '1E8449' } };
+        const allThin    = { top: thinGrey, bottom: thinGrey, left: thinGrey, right: thinGrey };
+        const allMedDark = { top: medDark,  bottom: medDark,  left: medDark,  right: medDark  };
+
+        const S = {
+            header:      { font: { bold:true, sz:11, color:{ rgb:'FFFFFF' } }, fill:{ patternType:'solid', fgColor:{ rgb:'2C3E50' } }, alignment:{ horizontal:'center', vertical:'center', wrapText:true }, border: allMedDark },
+            headerLabel: { font: { bold:true, sz:11, color:{ rgb:'FFFFFF' } }, fill:{ patternType:'solid', fgColor:{ rgb:'2C3E50' } }, alignment:{ horizontal:'left',   vertical:'center', wrapText:true }, border: allMedDark },
+            catHdr:      { font: { bold:true, sz:12, color:{ rgb:'FFFFFF' } }, fill:{ patternType:'solid', fgColor:{ rgb:'D35400' } }, alignment:{ horizontal:'left',   vertical:'center' }, border:{ top:medOrange, bottom:medOrange, left:medOrange, right:medOrange } },
+            catHdrC:     { font: { bold:true, sz:12, color:{ rgb:'FFFFFF' } }, fill:{ patternType:'solid', fgColor:{ rgb:'D35400' } }, alignment:{ horizontal:'center', vertical:'center' }, border:{ top:medOrange, bottom:medOrange, left:medOrange, right:medOrange } },
+            qLabel:      { font: { sz:10, color:{ rgb:'2C3E50' } }, fill:{ patternType:'solid', fgColor:{ rgb:'FEF9F5' } }, alignment:{ horizontal:'left',   vertical:'center' }, border: allThin },
+            qCell:       { font: { sz:10, color:{ rgb:'2C3E50' } }, fill:{ patternType:'solid', fgColor:{ rgb:'FEF9F5' } }, alignment:{ horizontal:'center', vertical:'center' }, border: allThin },
+            subLabel:    { font: { bold:true, sz:10, color:{ rgb:'FFFFFF' } }, fill:{ patternType:'solid', fgColor:{ rgb:'E67E22' } }, alignment:{ horizontal:'left',   vertical:'center' }, border:{ top:medOrange, bottom:medOrange, left:medOrange, right:medOrange } },
+            subCell:     { font: { bold:true, sz:10, color:{ rgb:'FFFFFF' } }, fill:{ patternType:'solid', fgColor:{ rgb:'E67E22' } }, alignment:{ horizontal:'center', vertical:'center' }, border:{ top:medOrange, bottom:medOrange, left:medOrange, right:medOrange } },
+            gtLabel:     { font: { bold:true, sz:11, color:{ rgb:'FFFFFF' } }, fill:{ patternType:'solid', fgColor:{ rgb:'1A5276' } }, alignment:{ horizontal:'left',   vertical:'center' }, border:{ top:medGreen,  bottom:medGreen,  left:medGreen,  right:medGreen  } },
+            gtCell:      { font: { bold:true, sz:11, color:{ rgb:'FFFFFF' } }, fill:{ patternType:'solid', fgColor:{ rgb:'1A5276' } }, alignment:{ horizontal:'center', vertical:'center' }, border:{ top:medGreen,  bottom:medGreen,  left:medGreen,  right:medGreen  } },
+            pctLabel:    { font: { bold:true, sz:11, color:{ rgb:'FFFFFF' } }, fill:{ patternType:'solid', fgColor:{ rgb:'117A65' } }, alignment:{ horizontal:'left',   vertical:'center' }, border:{ top:medGreen,  bottom:medGreen,  left:medGreen,  right:medGreen  } },
+            pctCell:     { font: { bold:true, sz:11, color:{ rgb:'FFFFFF' } }, fill:{ patternType:'solid', fgColor:{ rgb:'117A65' } }, alignment:{ horizontal:'center', vertical:'center' }, border:{ top:medGreen,  bottom:medGreen,  left:medGreen,  right:medGreen  } },
+        };
+
+        // ── Build rows + row-type metadata ─────────────
+        const rows    = [];
+        const rowMeta = []; // each entry: { type, colStyles[] }
+
+        // Header
+        rows.push(['Question / Category', 'Max', ...dates, 'Total Obtained', 'Total Max']);
+        rowMeta.push({ type:'header', h: 22 });
 
         TAPAH2_CATS.forEach(cat => {
-            const catQs = TAPAH2_QUESTIONS.filter(q => q.cat === cat.id);
+            const catQs       = TAPAH2_QUESTIONS.filter(q => q.cat === cat.id);
             const catMaxPerDay = catQs.reduce((s,q) => s+q.max, 0);
-            // Category section header
-            rows.push([`${cat.emoji} ${cat.label}`, catMaxPerDay, ...dates.map(()=>''), '', '']);
+
+            // Category header row
+            rows.push([`${cat.emoji}  ${cat.label}`, catMaxPerDay, ...dates.map(()=>''), '', '']);
+            rowMeta.push({ type:'catHdr', h: 20 });
 
             catQs.forEach(q => {
                 let rowTotal = 0;
                 const cells = docs.map(d => {
-                    const sc = d.scores?.[q.id] ?? 0;
+                    const sc = d.scores?.[q.id] !== undefined ? d.scores[q.id] : 0;
                     rowTotal += sc;
-                    return `${sc}/${q.max}`;
+                    return sc;
                 });
-                rows.push([`  ${q.label}`, q.max, ...cells, rowTotal, docs.length * q.max]);
+                rows.push([`    ${q.label}`, q.max, ...cells, rowTotal, docs.length * q.max]);
+                rowMeta.push({ type:'question', h: 16 });
             });
 
             // Category subtotal row
-            const catTotals = docs.map(d => catQs.reduce((s,q) => s+(d.scores?.[q.id]||0),0));
-            rows.push([`${cat.emoji} ${cat.label} Subtotal`, catMaxPerDay,
-                ...catTotals.map(t => `${t}/${catMaxPerDay}`),
+            const catTotals = docs.map(d => catQs.reduce((s,q) => s + (d.scores?.[q.id] !== undefined ? d.scores[q.id] : 0), 0));
+            rows.push([`${cat.emoji}  ${cat.label} — Subtotal`, catMaxPerDay,
+                ...catTotals,
                 catTotals.reduce((a,b)=>a+b,0), docs.length * catMaxPerDay]);
-            rows.push(['', '', ...dates.map(()=>''), '', '']); // spacer
+            rowMeta.push({ type:'subTotal', h: 18 });
+
+            // Spacer
+            rows.push(Array(numCols).fill(''));
+            rowMeta.push({ type:'spacer', h: 6 });
         });
 
-        // Grand total rows
-        rows.push(['Grand Total', TAPAH2_MAX, ...docs.map(d => `${d.totalScore??0}/${TAPAH2_MAX}`),
-            docs.reduce((s,d)=>s+(d.totalScore||0),0), docs.length * TAPAH2_MAX]);
-        rows.push(['Percent', '100%', ...docs.map(d => (d.percent??0)+'%'), '', '']);
+        // Grand total
+        rows.push(['Grand Total', TAPAH2_MAX,
+            ...docs.map(d => d.totalScore !== undefined ? d.totalScore : 0),
+            docs.reduce((s,d)=>s+(d.totalScore!==undefined?d.totalScore:0),0),
+            docs.length * TAPAH2_MAX]);
+        rowMeta.push({ type:'grandTotal', h: 20 });
 
+        // Percent
+        rows.push(['Percent', '100%',
+            ...docs.map(d => (d.percent !== undefined ? d.percent : 0) + '%'),
+            '', '']);
+        rowMeta.push({ type:'percent', h: 18 });
+
+        // ── Build worksheet ────────────────────────────
         const ws = XLSX.utils.aoa_to_sheet(rows);
-        ws['!cols'] = [{ wch: 44 }, { wch: 8 }, ...dates.map(() => ({ wch: 12 })), { wch: 14 }, { wch: 10 }];
+
+        // ── Apply styles ───────────────────────────────
+        rows.forEach((row, ri) => {
+            const meta = rowMeta[ri];
+            for (let ci = 0; ci < numCols; ci++) {
+                const addr = XLSX.utils.encode_cell({ r: ri, c: ci });
+                if (!ws[addr]) ws[addr] = { v: '', t: 's' };
+                const isLabel = ci === 0;
+                const isMax   = ci === 1;
+                switch (meta.type) {
+                    case 'header':    ws[addr].s = isLabel ? S.headerLabel : S.header;    break;
+                    case 'catHdr':    ws[addr].s = isLabel ? S.catHdr      : S.catHdrC;   break;
+                    case 'question':  ws[addr].s = isLabel ? S.qLabel      : S.qCell;     break;
+                    case 'subTotal':  ws[addr].s = isLabel ? S.subLabel    : S.subCell;   break;
+                    case 'grandTotal':ws[addr].s = isLabel ? S.gtLabel     : S.gtCell;    break;
+                    case 'percent':   ws[addr].s = isLabel ? S.pctLabel    : S.pctCell;   break;
+                    default: break; // spacer — no style
+                }
+            }
+        });
+
+        ws['!cols'] = [{ wch: 46 }, { wch: 7 }, ...dates.map(() => ({ wch: 11 })), { wch: 14 }, { wch: 10 }];
+        ws['!rows'] = rowMeta.map(m => ({ hpt: m.h }));
+
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Tapah-2 History');
         XLSX.writeFile(wb, `${userProfile?.name || 'My'}_Tapah2_History.xlsx`);
@@ -2835,11 +2978,11 @@ const TAPAH2_QUESTIONS = [
     { id: 'pr_q3', cat: 'prajalpa', catLabel: 'No Prajalpa',                 catEmoji: '🧘',   label: 'Avoid unnecessary hearing',                                max: 1 },
     { id: 'pr_q4', cat: 'prajalpa', catLabel: 'No Prajalpa',                 catEmoji: '🧘',   label: 'Sattam Kirtanam (internal remembrance)',                   max: 1 },
     { id: 'pr_q5', cat: 'prajalpa', catLabel: 'No Prajalpa',                 catEmoji: '🧘',   label: 'Hourly Prayer',                                            max: 1 },
-    // No Vaishnav Aparadha – 4 marks (4 × 1)
-    { id: 'va_q1', cat: 'vaishnav', catLabel: 'No Vaishnav Aparadha',        catEmoji: '🙏',   label: 'No Vaishnav Fault Discussion (Authority Except)',          max: 1 },
-    { id: 'va_q2', cat: 'vaishnav', catLabel: 'No Vaishnav Aparadha',        catEmoji: '🙏',   label: 'No debate (accept & learn)',                               max: 1 },
-    { id: 'va_q3', cat: 'vaishnav', catLabel: 'No Vaishnav Aparadha',        catEmoji: '🙏',   label: 'Mentally offer obeisances',                                max: 1 },
-    { id: 'va_q4', cat: 'vaishnav', catLabel: 'No Vaishnav Aparadha',        catEmoji: '🙏',   label: 'Non-Critical Vision (Jeev Ninda)',                         max: 1 },
+    // Vaishnav Aparadha – 4 marks (4 × 1)
+    { id: 'va_q1', cat: 'vaishnav', catLabel: 'Vaishnav Aparadha',        catEmoji: '🙏',   label: 'No Vaishnav Fault Discussion (Authority Except)',          max: 1 },
+    { id: 'va_q2', cat: 'vaishnav', catLabel: 'Vaishnav Aparadha',        catEmoji: '🙏',   label: 'No debate (accept & learn)',                               max: 1 },
+    { id: 'va_q3', cat: 'vaishnav', catLabel: 'Vaishnav Aparadha',        catEmoji: '🙏',   label: 'Mentally offer obeisances',                                max: 1 },
+    { id: 'va_q4', cat: 'vaishnav', catLabel: 'Vaishnav Aparadha',        catEmoji: '🙏',   label: 'Non-Critical Vision (Jeev Ninda)',                         max: 1 },
     // Interaction Discipline (Maryada) – 5 marks (5 × 1)
     { id: 'ma_q1', cat: 'maryada',  catLabel: 'Interaction Discipline',      catEmoji: '🚫',   label: 'No unnecessary talk',                                      max: 1 },
     { id: 'ma_q2', cat: 'maryada',  catLabel: 'Interaction Discipline',      catEmoji: '🚫',   label: 'No joking / casual talk',                                  max: 1 },
@@ -2863,7 +3006,7 @@ const TAPAH2_QUESTIONS = [
 const TAPAH2_CATS = [
     { id: 'chanting',  label: 'Focus on Chanting',           emoji: '🧘‍♂️' },
     { id: 'prajalpa',  label: 'No Prajalpa',                 emoji: '🧘'   },
-    { id: 'vaishnav',  label: 'No Vaishnav Aparadha',        emoji: '🙏'   },
+    { id: 'vaishnav',  label: 'Vaishnav Aparadha',        emoji: '🙏'   },
     { id: 'maryada',   label: 'Interaction Discipline',      emoji: '🚫'   },
     { id: 'skill',     label: 'Harmonium / Skill',           emoji: '🎹'   },
     { id: 'tolerance', label: 'Tolerance',                   emoji: '🌿'   },
@@ -2982,46 +3125,58 @@ window.cancelTapah2Edit = () => {
     if (hint)  hint.textContent = 'Filling today\'s entry';
 };
 
-// ── Card renderer ──────────────────────────────
+// ── Card renderer — one card per category ──────
 function renderTapah2Card(idx) {
-    const q = TAPAH2_QUESTIONS[idx];
-    if (!q) return;
+    const cat = TAPAH2_CATS[idx];
+    if (!cat) return;
     const card    = document.getElementById('tapah2-card');
     const counter = document.getElementById('tapah2-card-counter');
     const bar     = document.getElementById('tapah2-progress-bar');
     if (!card) return;
 
-    if (counter) counter.textContent = `Q ${idx + 1} / ${TAPAH2_QUESTIONS.length}`;
-    if (bar)     bar.style.width = `${(idx / TAPAH2_QUESTIONS.length) * 100}%`;
+    if (counter) counter.textContent = `Part ${idx + 1} / ${TAPAH2_CATS.length}`;
+    if (bar)     bar.style.width = `${(idx / TAPAH2_CATS.length) * 100}%`;
 
-    // Category position info
-    const catQs  = TAPAH2_QUESTIONS.filter(q2 => q2.cat === q.cat);
-    const catIdx = catQs.findIndex(q2 => q2.id === q.id);
-    const isLast = idx === TAPAH2_QUESTIONS.length - 1;
-    const existing = _tapah2Scores[q.id]; // may be 0, 1, number, or undefined
+    const catQs  = TAPAH2_QUESTIONS.filter(q => q.cat === cat.id);
+    const catMax = catQs.reduce((s, q) => s + q.max, 0);
+    const isLast = idx === TAPAH2_CATS.length - 1;
 
-    // Category badge
-    const badge = `<div style="display:inline-flex;align-items:center;gap:6px;background:#fef0e7;border-radius:20px;padding:5px 14px;margin-bottom:14px;">
-        <span style="font-size:15px;">${q.catEmoji}</span>
-        <span style="font-size:12px;color:#e67e22;font-weight:700;">${q.catLabel}</span>
-        <span style="font-size:11px;color:#bbb;margin-left:2px;">&nbsp;${catIdx + 1}/${catQs.length}</span>
-    </div>`;
+    const questionsHTML = catQs.map(q => {
+        const existing   = _tapah2Scores[q.id];
+        const rangeLabel = q.max === 1 ? '−1 to +1' : `−${q.max} to +${q.max}`;
+        return `<div style="padding:11px 0;border-bottom:1px solid #f0f0f0;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+                <div style="flex:1;">
+                    <div style="font-size:14px;font-weight:600;color:#2c3e50;line-height:1.4;">${q.label}</div>
+                    <div style="font-size:11px;color:#bbb;margin-top:2px;">${rangeLabel}</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
+                    <input type="number" id="tapah2-input-${q.id}" min="-${q.max}" max="${q.max}" step="1"
+                        placeholder="0" value="${existing !== undefined ? existing : ''}"
+                        style="width:62px;padding:8px 4px;border:2px solid #e67e22;border-radius:8px;font-size:18px;font-weight:800;text-align:center;background:#fef9f5;color:#e67e22;"
+                        oninput="updateTapah2Totals()">
+                    <span style="font-size:12px;color:#aaa;font-weight:700;">/${q.max}</span>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
 
-    const qText = `<div style="font-size:17px;font-weight:700;color:#2c3e50;margin-bottom:5px;line-height:1.4;">${q.label}</div>
-    <div style="font-size:12px;color:#aaa;margin-bottom:18px;">Max: ${q.max} mark${q.max > 1 ? 's' : ''}</div>`;
+    const catScore = catQs.reduce((s, q) => s + (_tapah2Scores[q.id] !== undefined ? _tapah2Scores[q.id] : 0), 0);
+    const subtotalColor = catScore > 0 ? '#27ae60' : catScore < 0 ? '#e74c3c' : '#aaa';
 
-    // All questions: numeric input + manual Next
-    card.innerHTML = `<div style="padding:18px 20px 16px;">
-        ${badge}${qText}
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
-            <label style="font-size:13px;font-weight:700;color:#2c3e50;white-space:nowrap;">Your Marks:</label>
-            <input type="number" id="tapah2-score-input" min="0" max="${q.max}"
-                placeholder="0" value="${existing !== undefined ? existing : ''}"
-                style="flex:1;padding:11px 14px;border:2px solid #e67e22;border-radius:10px;font-size:22px;font-weight:800;text-align:center;background:#fef9f5;color:#e67e22;width:auto;margin:0;"
-                oninput="updateTapah2Totals()" onkeydown="if(event.key==='Enter')tapah2CardNext()">
-            <span style="font-size:15px;color:#aaa;font-weight:700;white-space:nowrap;">/ ${q.max}</span>
+    card.innerHTML = `<div style="padding:16px 20px 16px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:12px;border-bottom:2px solid #fde8d0;">
+            <span style="font-size:22px;line-height:1;">${cat.emoji}</span>
+            <div>
+                <div style="font-size:19px;font-weight:800;color:#2c3e50;line-height:1.2;">${cat.label}</div>
+                <div style="font-size:12px;color:#aaa;margin-top:2px;">Part ${idx + 1} of ${TAPAH2_CATS.length} &nbsp;·&nbsp; max ${catMax}</div>
+            </div>
         </div>
-        <div style="display:flex;gap:10px;">
+        ${questionsHTML}
+        <div id="tapah2-cat-subtotal" style="margin-top:10px;text-align:right;font-size:13px;font-weight:700;color:${subtotalColor};">
+            ${cat.label}: ${catScore > 0 ? '+' : ''}${catScore} / ${catMax}
+        </div>
+        <div style="display:flex;gap:10px;margin-top:14px;">
             <button type="button" onclick="tapah2CardBack()"
                 style="flex:1;padding:12px;border-radius:10px;border:2px solid #ddd;background:#f8f9fa;color:#555;font-weight:700;font-size:13px;width:auto;margin:0;cursor:pointer;">
                 ← Back
@@ -3032,7 +3187,11 @@ function renderTapah2Card(idx) {
             </button>
         </div>
     </div>`;
-    setTimeout(() => { const inp = document.getElementById('tapah2-score-input'); if (inp) { inp.focus(); inp.select(); } }, 250);
+    // Focus first input
+    setTimeout(() => {
+        const first = document.getElementById(`tapah2-input-${catQs[0].id}`);
+        if (first) { first.focus(); first.select(); }
+    }, 250);
 }
 
 // ── Slide animation helper ──────────────────────
@@ -3058,59 +3217,75 @@ function tapah2Animate(targetIdx, direction) {
     }, 220);
 }
 
+// ── Save all inputs for the current category card ──
+function _tapah2SaveCurrentCard() {
+    const cat = TAPAH2_CATS[_tapah2Index];
+    if (!cat) return;
+    TAPAH2_QUESTIONS.filter(q => q.cat === cat.id).forEach(q => {
+        const inp = document.getElementById(`tapah2-input-${q.id}`);
+        if (!inp) return;
+        const raw = parseInt(inp.value, 10);
+        if (!isNaN(raw)) _tapah2Scores[q.id] = Math.max(-q.max, Math.min(q.max, raw));
+        // if empty/incomplete, leave existing _tapah2Scores[q.id] unchanged
+    });
+}
+
 // ── Next / Back navigation ──────────────────────
 window.tapah2CardNext = () => {
-    const q = TAPAH2_QUESTIONS[_tapah2Index];
-    if (q) {
-        const inp = document.getElementById('tapah2-score-input');
-        if (inp) {
-            const raw = parseInt(inp.value, 10);
-            if (!isNaN(raw)) _tapah2Scores[q.id] = Math.max(0, Math.min(q.max, raw));
-        }
-    }
+    _tapah2SaveCurrentCard();
     const next = _tapah2Index + 1;
-    if (next < TAPAH2_QUESTIONS.length) tapah2Animate(next, 'forward');
+    if (next < TAPAH2_CATS.length) tapah2Animate(next, 'forward');
     else showTapah2DoneScreen();
 };
 
 window.tapah2CardBack = () => {
     if (_tapah2Index === 0) return;
-    const q = TAPAH2_QUESTIONS[_tapah2Index];
-    if (q) {
-        const inp = document.getElementById('tapah2-score-input');
-        if (inp) {
-            const raw = parseInt(inp.value, 10);
-            if (!isNaN(raw)) _tapah2Scores[q.id] = Math.max(0, Math.min(q.max, raw));
-        }
-    }
+    _tapah2SaveCurrentCard();
     tapah2Animate(_tapah2Index - 1, 'backward');
 };
 
 // ── Live totals & mini-badges ───────────────────
+// Safe score getter — uses explicit undefined check so 0 and negatives are preserved
+function _t2s(id) { return _tapah2Scores[id] !== undefined ? _tapah2Scores[id] : 0; }
+
 function updateTapah2Totals() {
-    // Persist numeric input value
-    const q = TAPAH2_QUESTIONS[_tapah2Index];
-    if (q) {
-        const inp = document.getElementById('tapah2-score-input');
-        if (inp && inp.value !== '') {
+    // Step 1: flush ALL visible inputs on the current card into _tapah2Scores
+    const activeCat = TAPAH2_CATS[_tapah2Index];
+    if (activeCat) {
+        TAPAH2_QUESTIONS.filter(q => q.cat === activeCat.id).forEach(q => {
+            const inp = document.getElementById(`tapah2-input-${q.id}`);
+            if (!inp) return;
             const raw = parseInt(inp.value, 10);
             if (!isNaN(raw)) {
-                const cl = Math.max(0, Math.min(q.max, raw));
+                const cl = Math.max(-q.max, Math.min(q.max, raw));
                 _tapah2Scores[q.id] = cl;
-                if (raw !== cl) inp.value = cl;
+                if (inp.value !== String(cl)) inp.value = cl;
             }
+            // if input is empty/incomplete (e.g. just typed '-'), leave _tapah2Scores as-is
+        });
+
+        // Update the category subtotal on the card
+        const catQs  = TAPAH2_QUESTIONS.filter(q => q.cat === activeCat.id);
+        const catMax = catQs.reduce((s, q) => s + q.max, 0);
+        const catScore = catQs.reduce((s, q) => s + _t2s(q.id), 0);
+        const sub = document.getElementById('tapah2-cat-subtotal');
+        if (sub) {
+            const col = catScore > 0 ? '#27ae60' : catScore < 0 ? '#e74c3c' : '#aaa';
+            sub.style.color = col;
+            sub.textContent = `${activeCat.label}: ${catScore > 0 ? '+' : ''}${catScore} / ${catMax}`;
         }
     }
 
+    // Step 2: compute grand total from _tapah2Scores (all questions, explicit check)
     let total = 0;
-    TAPAH2_QUESTIONS.forEach(q2 => { total += _tapah2Scores[q2.id] || 0; });
+    TAPAH2_QUESTIONS.forEach(q => { total += _t2s(q.id); });
     const pct   = Math.round((total / TAPAH2_MAX) * 100);
-    const color = pct >= 70 ? '#27ae60' : pct >= 50 ? '#f39c12' : '#e74c3c';
+    const color = pct >= 50 ? '#27ae60' : pct >= 0 ? '#f39c12' : '#e74c3c';
 
     const td = document.getElementById('tapah2-total-display');
     const pp = document.getElementById('tapah2-percent-display');
-    if (td) { td.textContent = `${total}/${TAPAH2_MAX}`; td.style.color = color; }
-    if (pp) { pp.textContent = `${pct}%`;                pp.style.color = color; }
+    if (td) { td.textContent = `${total > 0 ? '+' : ''}${total}/${TAPAH2_MAX}`; td.style.color = color; }
+    if (pp) { pp.textContent = `${pct}%`; pp.style.color = color; }
 
     // Mini category badges
     const catEl = document.getElementById('tapah2-category-totals');
@@ -3118,13 +3293,13 @@ function updateTapah2Totals() {
         catEl.innerHTML = TAPAH2_CATS.map(cat => {
             const catQs   = TAPAH2_QUESTIONS.filter(q2 => q2.cat === cat.id);
             const catMax  = catQs.reduce((s, q2) => s + q2.max, 0);
-            const catSc   = catQs.reduce((s, q2) => s + (_tapah2Scores[q2.id] || 0), 0);
+            const catSc   = catQs.reduce((s, q2) => s + _t2s(q2.id), 0);
             const anyDone = catQs.some(q2 => _tapah2Scores[q2.id] !== undefined);
             const cp      = anyDone ? Math.round((catSc / catMax) * 100) : null;
-            const col     = !anyDone ? '#ccc' : cp >= 70 ? '#27ae60' : cp >= 40 ? '#f39c12' : '#e74c3c';
+            const col     = !anyDone ? '#ccc' : cp >= 50 ? '#27ae60' : cp >= 0 ? '#f39c12' : '#e74c3c';
             return `<div style="flex:1;min-width:70px;background:white;border-radius:8px;padding:6px 6px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.07);border-top:3px solid ${col};">
                 <div style="font-size:10px;color:#888;line-height:1.2;margin-bottom:2px;">${cat.emoji} ${cat.label.split(' ').slice(0,2).join(' ')}</div>
-                <div style="font-size:13px;font-weight:700;color:${col};">${anyDone ? catSc+'/'+catMax : '–'}</div>
+                <div style="font-size:13px;font-weight:700;color:${col};">${anyDone ? (catSc > 0 ? '+' : '') + catSc + '/' + catMax : '–'}</div>
             </div>`;
         }).join('');
     }
@@ -3141,22 +3316,24 @@ function showTapah2DoneScreen() {
     if (bar)  bar.style.width = '100%';
 
     let total = 0;
-    TAPAH2_QUESTIONS.forEach(q => { total += _tapah2Scores[q.id] || 0; });
+    TAPAH2_QUESTIONS.forEach(q => { total += _t2s(q.id); });
     const pct   = Math.round((total / TAPAH2_MAX) * 100);
-    const color = pct >= 70 ? '#27ae60' : pct >= 50 ? '#f39c12' : '#e74c3c';
+    const color = pct >= 50 ? '#27ae60' : pct >= 0 ? '#f39c12' : '#e74c3c';
 
     const doneScore = document.getElementById('tapah2-done-score');
     const donePct   = document.getElementById('tapah2-done-pct');
-    if (doneScore) { doneScore.textContent = `${total} / ${TAPAH2_MAX}`; doneScore.style.color = color; }
-    if (donePct)   donePct.textContent = `${pct}%`;
+    if (doneScore) { doneScore.textContent = `${total > 0 ? '+' : ''}${total} / ${TAPAH2_MAX}`; doneScore.style.color = color; }
+    if (donePct)   { donePct.textContent = `${pct}%`; donePct.style.color = color; }
     if (done)   done.style.display   = 'block';
     if (submit) submit.style.display = 'block';
 }
 
 window.tapah2FlashReview = () => {
-    _tapah2Advancing = false;
-    const firstUnfilled = TAPAH2_QUESTIONS.findIndex(q => _tapah2Scores[q.id] === undefined);
-    _tapah2Index = firstUnfilled >= 0 ? firstUnfilled : 0;
+    // Go to first category that has any unfilled question, else first category
+    const firstIncompleteCat = TAPAH2_CATS.findIndex(cat =>
+        TAPAH2_QUESTIONS.filter(q => q.cat === cat.id).some(q => _tapah2Scores[q.id] === undefined)
+    );
+    _tapah2Index = firstIncompleteCat >= 0 ? firstIncompleteCat : 0;
     const card   = document.getElementById('tapah2-card');
     const done   = document.getElementById('tapah2-done-screen');
     const submit = document.getElementById('tapah2-submit-btn');
@@ -3181,7 +3358,10 @@ window.submitTapah2 = async () => {
 
     const scores = {};
     let total = 0;
-    TAPAH2_QUESTIONS.forEach(q => { scores[q.id] = _tapah2Scores[q.id] || 0; total += scores[q.id]; });
+    TAPAH2_QUESTIONS.forEach(q => {
+        scores[q.id] = Math.max(-q.max, Math.min(q.max, _t2s(q.id)));
+        total += scores[q.id];
+    });
     const percent = Math.round((total / TAPAH2_MAX) * 100);
 
     try {

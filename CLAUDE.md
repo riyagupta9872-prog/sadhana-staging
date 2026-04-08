@@ -20,13 +20,14 @@ Open `index.html` in a browser. No build tools, no npm, no bundler. Libraries ar
 
 ## Architecture
 
-**Single-page monolith**: All logic in `app.js` (~3200 lines), all markup in `index.html`, styles in `style.css` + heavy inline styles in `index.html`. No module system or component framework.
+**Single-page monolith**: All logic in `app.js` (~4449 lines), all markup in `index.html`, styles in `style.css` + heavy inline styles in `index.html`. No module system or component framework.
 
 **Firebase data model** (Firestore):
 ```
 users/{userId}/
   ├── sadhana/{date}     — daily entry (times, minutes, scores, totalScore, dayPercent)
   ├── tapah/{date}       — daily tapah entry (anukulAnswers, pratikulAnswers, totalScore)
+  ├── tapah2/{date}      — daily tapah-2 entry (category-based numeric scores)
   └── editHistory/{ts}   — audit trail for edits (date, previousData, reason)
 ```
 
@@ -38,18 +39,20 @@ users/{userId}/
 
 | Lines | Section | Key Functions |
 |-------|---------|---------------|
-| 1–60 | Firebase init, helpers | `toLocalDateStr()`, `parseLocalDate()`, `t2m()`, `getNRData()` |
-| 60–420 | Excel import/export | `downloadUserExcel()`, `importExcelFile()` |
-| 420–490 | UI navigation | `showSection()`, `switchMainTab()`, `switchSubTab()` |
-| 489–702 | Home screen | `loadHomeScreen()` — weekly summary ring, day dots, activity bars |
-| 704–730 | Auth state | `auth.onAuthStateChanged()` — drives entire UI |
-| 733–920 | Scoring engine & form | `computeScores()`, form submit handler |
-| 980–1160 | Edit & history | `editEntry()`, `viewEditHistory()` |
-| 1160–1580 | Reports | Weekly cards, 4-week comparison (`generate4WeekComparison`), activity analysis |
-| 1580–1998 | Charts | Score ring, line chart (28d/4w/6m), activity bar chart |
-| 1998–2350 | Tapah flashcard | 10-question flash-card entry, `submitTapahFromFlash()` |
-| 2350–3000 | Activity analysis modal | `openActivityAnalysis()`, `loadActivityAnalysis()` |
-| 3000+ | Profile, password, misc | Profile pic upload, forgot/change password |
+| 1–62 | Firebase init, helpers | `toLocalDateStr()`, `parseLocalDate()`, `t2m()`, `getNRData()`, `getWeekInfo()` |
+| 63–904 | Excel import/export (all modules) | Sadhana (3), Tapah (3B/3C), Tapah-2 (3E/3F), Master all-tabs (3G) |
+| 905–979 | UI navigation | `showSection()`, `switchMainTab()`, `switchSubTab()` |
+| 980–1194 | Home screen | `loadHomeScreen()` — weekly summary ring, day dots, activity bars |
+| 1195–1223 | Auth state | `auth.onAuthStateChanged()` — drives entire UI |
+| 1224–1470 | Scoring engine & form | `computeScores()`, morning program toggle, bed-time modal, form submit |
+| 1471–1650 | Edit & history | `editEntry()`, `viewEditHistory()`, score cell renderer |
+| 1651–2087 | Reports | Weekly cards, 4-week comparison (`generate4WeekComparison`) |
+| 2088–2509 | Charts | Score ring, line chart (28d/4w/6m), activity bar chart, period tab switcher |
+| 2510–2894 | Tapah-1 flashcard | 10-question flash-card entry, `submitTapahFromFlash()` |
+| 2895–3572 | Tapah-2 module | Category-based numeric scoring, `renderTapah2Card()`, `submitTapah2()` |
+| 3573–3787 | Activity analysis modal | `openActivityAnalysis()`, `loadActivityAnalysis()` |
+| 3788–4214 | Tapah report | Tapah-1 and Tapah-2 report views |
+| 4215+ | Profile, password, misc | Profile pic upload, forgot/change password, caps lock detection |
 
 ## Scoring System
 
@@ -61,7 +64,9 @@ users/{userId}/
 
 **Today exception**: If today is not yet filled, it gets `null` (no penalty) — penalty only applies to past unfilled days on/after APP_START_DATE.
 
-**Tapah scoring**: Anukulasya — 5 pts (yes), 2 (partial), 0 (no). Pratikulasya — 5 pts (no), 2 (partial), -5 (yes). Flash-card UI with 10 questions.
+**Tapah-1 scoring**: Anukulasya — 5 pts (yes), 2 (partial), 0 (no). Pratikulasya — 5 pts (no), 2 (partial), -5 (yes). Flash-card UI with 10 questions.
+
+**Tapah-2 scoring**: Category-based numeric input (marks per question, each with a `max`). Rendered via `renderTapah2Card()`. Questions are defined in `TAPAH2_QUESTIONS` constant; scores stored in `_tapah2Scores` during entry.
 
 ## Date Handling
 
