@@ -1112,12 +1112,12 @@ async function loadHomeScreen(weekOffset) {
             return `<div style="text-align:center;"><div style="width:32px;height:32px;border-radius:50%;background:#e74c3c;margin:0 auto;display:flex;align-items:center;justify-content:center;color:white;font-size:14px;">✗</div><div style="font-size:10px;color:#555;margin-top:3px;">${d.name}</div></div>`;
         }).join('');
 
-        // Activity bars HTML — use full week max (same as Reports Sadhna % row)
-        const actMaxMap = { 'Day Sleep': 70 };  // 7 × 10
-        const defaultActMax = 175;               // 7 × 25
+        // Activity bars HTML — scale max by elapsed days (fair denominator)
+        const actDayMax = { 'Day Sleep': 10 };  // 10 pts/day
+        const defaultActDayMax = 25;             // 25 pts/day
         const actEmojis = { Sleep: '🛏️', 'Wake-up': '⏰', 'Morning Prog.': '🙏', Chanting: '📿', Reading: '📖', Hearing: '🎧', 'Notes Rev.': '📝', 'Day Sleep': '😴' };
         const actBarsHtml = Object.entries(actTotals).map(([name, val]) => {
-            const thisMax = actMaxMap[name] || defaultActMax;
+            const thisMax = (actDayMax[name] || defaultActDayMax) * elapsedDays;
             const pct = thisMax > 0 ? Math.round((val / thisMax) * 100) : 0;
             const barWidth = Math.max(0, pct); // bar can't be negative width
             const pctColor = pct < 0 ? '#e74c3c' : '#555';
@@ -1927,33 +1927,33 @@ async function loadReports(userId, containerId) {
                             <tr style="background:#f0f4ff;font-weight:bold;font-size:12px;">
                                 <td colspan="2" style="padding:7px 8px;color:#2c3e50;position:sticky;left:0;z-index:2;background:#f0f4ff;">Total</td>
                                 <td style="padding:7px 4px;text-align:center;color:#888;">—</td>
-                                ${totCell(weekTotals.sleepMarks, 175)}
+                                ${totCell(weekTotals.sleepMarks, elapsedDays * 25)}
                                 <td style="padding:7px 4px;text-align:center;color:#888;">—</td>
-                                ${totCell(weekTotals.wakeupMarks, 175)}
+                                ${totCell(weekTotals.wakeupMarks, elapsedDays * 25)}
                                 <td style="padding:7px 4px;text-align:center;color:#888;">—</td>
-                                ${totCell(weekTotals.chantingMarks, 175)}
+                                ${totCell(weekTotals.chantingMarks, elapsedDays * 25)}
                                 <td style="padding:7px 4px;text-align:center;color:#888;">—</td>
-                                ${totCell(weekTotals.morningMarks, 175)}
+                                ${totCell(weekTotals.morningMarks, elapsedDays * 25)}
                                 <td style="padding:7px 4px;text-align:center;color:#888;">—</td>
-                                ${totCell(weekTotals.daySleepMarks, 70)}
+                                ${totCell(weekTotals.daySleepMarks, elapsedDays * 10)}
                                 <td style="padding:7px 4px;text-align:center;font-size:11px;color:#555;">${weekTotals.readingMins}m</td>
-                                ${totCell(weekTotals.readingMarks, 175)}
+                                ${totCell(weekTotals.readingMarks, elapsedDays * 25)}
                                 <td style="padding:7px 4px;text-align:center;font-size:11px;color:#555;">${weekTotals.hearingMins}m</td>
-                                ${totCell(weekTotals.hearingMarks, 175)}
+                                ${totCell(weekTotals.hearingMarks, elapsedDays * 25)}
                                 <td style="padding:7px 4px;text-align:center;font-size:11px;color:#555;">${weekTotals.notesMins}m</td>
-                                ${totCell(adjustedNotesMarks, 175)}
+                                ${totCell(adjustedNotesMarks, elapsedDays * 25)}
                                 <td colspan="2" style="padding:7px 4px;text-align:center;color:#888;">—</td>
                             </tr>
                             <tr style="background:#e8f0fe;font-weight:bold;font-size:12px;">
                                 <td colspan="2" style="padding:6px 8px;color:#2c3e50;position:sticky;left:0;z-index:2;background:#e8f0fe;">Sadhna %</td>
-                                ${pctCell(weekTotals.sleepMarks, 175)}
-                                ${pctCell(weekTotals.wakeupMarks, 175)}
-                                ${pctCell(weekTotals.chantingMarks, 175)}
-                                ${pctCell(weekTotals.morningMarks, 175)}
-                                ${pctCell(weekTotals.daySleepMarks, 70)}
-                                ${pctCell(weekTotals.readingMarks, 175)}
-                                ${pctCell(weekTotals.hearingMarks, 175)}
-                                ${pctCell(adjustedNotesMarks, 175)}
+                                ${pctCell(weekTotals.sleepMarks,    elapsedDays * 25)}
+                                ${pctCell(weekTotals.wakeupMarks,   elapsedDays * 25)}
+                                ${pctCell(weekTotals.chantingMarks, elapsedDays * 25)}
+                                ${pctCell(weekTotals.morningMarks,  elapsedDays * 25)}
+                                ${pctCell(weekTotals.daySleepMarks, elapsedDays * 10)}
+                                ${pctCell(weekTotals.readingMarks,  elapsedDays * 25)}
+                                ${pctCell(weekTotals.hearingMarks,  elapsedDays * 25)}
+                                ${pctCell(adjustedNotesMarks,       elapsedDays * 25)}
                                 <td colspan="2" style="padding:6px 4px;text-align:center;color:#888;">—</td>
                             </tr>
                         </tbody>
@@ -2395,7 +2395,7 @@ function renderScoreLineChart(labels, scores) {
                 pointHoverBackgroundColor: '#5b9bd5',
                 tension: 0.35,
                 fill: true,
-                spanGaps: false,
+                spanGaps: true,
             }]
         },
         options: {
@@ -3424,18 +3424,19 @@ function renderTapah2Report(allData) {
     const catScore = (entry, catId) => {
         if (!entry) return null;
         const catQs = TAPAH2_QUESTIONS.filter(q => q.cat === catId);
-        return catQs.reduce((s, q) => s + (entry.scores?.[q.id] || 0), 0);
+        return catQs.reduce((s, q) => s + (entry.scores?.[q.id] ?? 0), 0);
     };
     const catMax = catId => TAPAH2_QUESTIONS.filter(q => q.cat === catId).reduce((s,q) => s+q.max, 0);
 
     let html = '';
     Object.keys(monthMap).sort().reverse().forEach(mk => {
         const weeks = monthMap[mk].slice().reverse();
-        const mFilled = weeks.flatMap(w => weekMap[w]).filter(d => allData[d]);
-        const mTotal  = mFilled.reduce((s,d) => s+(allData[d]?.totalScore||0), 0);
-        const mMax    = mFilled.length * TAPAH2_MAX;
-        const mPct    = mMax > 0 ? Math.round(mTotal/mMax*100) : 0;
-        const mExpand = _tapah2Expanded.has('month_'+mk);
+        const mFilled  = weeks.flatMap(w => weekMap[w]).filter(d => allData[d]);
+        const mTotal   = mFilled.reduce((s,d) => s+(allData[d]?.totalScore||0), 0);
+        const mElapsed = weeks.reduce((sum, s) => sum + (s === thisWeekSunStr ? weekMap[s].length : 7), 0);
+        const mMax     = mElapsed * TAPAH2_MAX;
+        const mPct     = mMax > 0 ? Math.round(mTotal/mMax*100) : 0;
+        const mExpand  = _tapah2Expanded.has('month_'+mk);
 
         html += `<div style="margin-bottom:10px;">
             <div onclick="toggleTapah2Group('month_${mk}')"
@@ -3450,13 +3451,14 @@ function renderTapah2Report(allData) {
         if (mExpand) {
             html += `<div style="background:#f8f9fa;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 8px 8px;padding:8px;">`;
             weeks.forEach(sunStr => {
-                const wDates  = weekMap[sunStr];
-                const wFilled = wDates.filter(d => allData[d]);
-                const wTotal  = wFilled.reduce((s,d) => s+(allData[d]?.totalScore||0), 0);
-                const wMax    = wFilled.length * TAPAH2_MAX;
-                const wPct    = wMax > 0 ? Math.round(wTotal/wMax*100) : 0;
-                const wExpand = _tapah2Expanded.has('week_'+sunStr);
-                const isCur   = sunStr === thisWeekSunStr;
+                const wDates   = weekMap[sunStr];
+                const wFilled  = wDates.filter(d => allData[d]);
+                const wTotal   = wFilled.reduce((s,d) => s+(allData[d]?.totalScore||0), 0);
+                const isCur    = sunStr === thisWeekSunStr;
+                const wElapsed = isCur ? wDates.length : 7;
+                const wMax     = wElapsed * TAPAH2_MAX;
+                const wPct     = wMax > 0 ? Math.round(wTotal/wMax*100) : 0;
+                const wExpand  = _tapah2Expanded.has('week_'+sunStr);
 
                 html += `<div style="margin-bottom:6px;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
                     <div onclick="toggleTapah2Group('week_${sunStr}')"
@@ -3560,8 +3562,8 @@ async function loadTapah2Progress() {
             if (ds <= todayStr && ds >= APP_START_DATE) weekDates.push(ds);
         }
         const filled    = weekDates.filter(d => allData[d]);
-        const wTotal    = filled.reduce((s,d) => s+(allData[d]?.totalScore||0), 0);
-        const wMax      = filled.length * TAPAH2_MAX;
+        const wTotal    = filled.reduce((s,d) => s+(allData[d]?.totalScore??0), 0);
+        const wMax      = weekDates.length * TAPAH2_MAX;
         const wPct      = wMax > 0 ? Math.round(wTotal/wMax*100) : 0;
         const ringColor = wPct >= 70 ? '#27ae60' : wPct >= 50 ? '#f39c12' : '#e74c3c';
 
@@ -3572,9 +3574,9 @@ async function loadTapah2Progress() {
             const cm    = TAPAH2_QUESTIONS.filter(q=>q.cat===cat.id).reduce((s,q)=>s+q.max,0);
             const cTot  = filled.reduce((s,d) => {
                 const catQs = TAPAH2_QUESTIONS.filter(q=>q.cat===cat.id);
-                return s + catQs.reduce((ss,q) => ss+(allData[d]?.scores?.[q.id]||0), 0);
+                return s + catQs.reduce((ss,q) => ss+(allData[d]?.scores?.[q.id]??0), 0);
             }, 0);
-            const cMax  = filled.length * cm;
+            const cMax  = weekDates.length * cm;
             const cp    = cMax > 0 ? Math.round(cTot/cMax*100) : 0;
             const cc    = cp >= 70 ? '#27ae60' : cp >= 50 ? '#f39c12' : '#e74c3c';
             return `<div style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:12px;">
@@ -3611,16 +3613,20 @@ async function loadTapah2Progress() {
         const dates28   = [];
         for (let i=27;i>=0;i--) { const d=new Date(today);d.setDate(today.getDate()-i);const ds=toLocalDateStr(d);if(ds>=APP_START_DATE)dates28.push(ds); }
         const labels    = dates28.map(ds=>{const d=new Date(ds+'T00:00:00');return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;});
-        const chartData = dates28.map(ds => allData[ds]?.totalScore ?? null);
+        const chartData = dates28.map(ds => {
+            if (allData[ds]) return allData[ds].totalScore ?? 0;
+            if (ds >= APP_START_DATE && ds < todayStr) return 0; // NR past day — drop to 0
+            return null; // today (unfilled) or pre-app-start — skip
+        });
 
         const canvas = document.getElementById('tapah2-score-chart');
         if (!canvas) return;
         if (_tapah2Chart) { _tapah2Chart.destroy(); _tapah2Chart = null; }
         _tapah2Chart = new Chart(canvas, {
             type: 'line',
-            data: { labels, datasets: [{ label: 'Tapah-2', data: chartData, borderColor: '#e67e22', backgroundColor: 'rgba(230,126,34,0.08)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#e67e22', spanGaps: false, tension: 0.3 }] },
+            data: { labels, datasets: [{ label: 'Tapah-2', data: chartData, borderColor: '#e67e22', backgroundColor: 'rgba(230,126,34,0.08)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#e67e22', spanGaps: true, tension: 0.3 }] },
             options: { responsive: true, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.y} / ${TAPAH2_MAX}` } } },
-                scales: { y: { beginAtZero: true, max: TAPAH2_MAX, grid: { color: 'rgba(0,0,0,0.06)' }, ticks: { stepSize: Math.ceil(TAPAH2_MAX/5) } }, x: { grid: { display: false }, ticks: { maxRotation: 45, font: { size: 10 } } } } }
+                scales: { y: { max: TAPAH2_MAX, grid: { color: 'rgba(0,0,0,0.06)' }, ticks: { stepSize: Math.ceil(TAPAH2_MAX/5) } }, x: { grid: { display: false }, ticks: { maxRotation: 45, font: { size: 10 } } } } }
         });
     } catch (err) {
         if (ringEl) ringEl.innerHTML = `<div style="color:#e74c3c;padding:20px;text-align:center;">⚠️ Error loading Tapah-2 progress:<br><span style="font-size:12px;font-family:monospace;">${err.code || err.message}</span></div>`;
@@ -3937,16 +3943,20 @@ async function loadTapahProgress() {
         const dates28   = [];
         for (let i = 27; i >= 0; i--) { const d = new Date(today); d.setDate(today.getDate() - i); const ds = toLocalDateStr(d); if (ds >= APP_START_DATE) dates28.push(ds); }
         const labels    = dates28.map(ds => { const d = new Date(ds + 'T00:00:00'); return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`; });
-        const chartData = dates28.map(ds => allData[ds]?.totalScore ?? null);
+        const chartData = dates28.map(ds => {
+            if (allData[ds]) return allData[ds].totalScore ?? 0;
+            if (ds >= APP_START_DATE && ds < todayStr) return 0; // NR past day — drop to 0
+            return null; // today (unfilled) or pre-app-start — skip
+        });
 
         const canvas = document.getElementById('tapah-score-chart');
         if (!canvas) return;
         if (_tapahChart) { _tapahChart.destroy(); _tapahChart = null; }
         _tapahChart = new Chart(canvas, {
             type: 'line',
-            data: { labels, datasets: [{ label: 'Tapah', data: chartData, borderColor: '#764ba2', backgroundColor: 'rgba(118,75,162,0.08)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#764ba2', spanGaps: false, tension: 0.3 }] },
+            data: { labels, datasets: [{ label: 'Tapah', data: chartData, borderColor: '#764ba2', backgroundColor: 'rgba(118,75,162,0.08)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#764ba2', spanGaps: true, tension: 0.3 }] },
             options: { responsive: true, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.y} / ${TAPAH_MAX}` } } },
-                scales: { y: { beginAtZero: true, max: TAPAH_MAX, grid: { color: 'rgba(0,0,0,0.06)' }, ticks: { stepSize: 10 } }, x: { grid: { display: false }, ticks: { maxRotation: 45, font: { size: 10 } } } } }
+                scales: { y: { max: TAPAH_MAX, grid: { color: 'rgba(0,0,0,0.06)' }, ticks: { stepSize: 10 } }, x: { grid: { display: false }, ticks: { maxRotation: 45, font: { size: 10 } } } } }
         });
     } catch (err) {
         if (ringEl) ringEl.innerHTML = `<div style="color:#e74c3c;padding:20px;text-align:center;">⚠️ Error loading Tapah progress:<br><span style="font-size:12px;font-family:monospace;">${err.code || err.message}</span></div>`;
@@ -4050,11 +4060,12 @@ function renderTapahReport(allData) {
     let html = '';
     Object.keys(monthMap).sort().reverse().forEach(mk => {
         const weeks = monthMap[mk].slice().reverse();
-        const mFilled = weeks.flatMap(w => weekMap[w]).filter(d => allData[d]);
-        const mTotal  = mFilled.reduce((s,d) => s+(allData[d]?.totalScore||0), 0);
-        const mMax    = mFilled.length * 50;
-        const mPct    = mMax > 0 ? Math.round(mTotal/mMax*100) : 0;
-        const mExpand = _tapahExpanded.has('month_'+mk);
+        const mFilled  = weeks.flatMap(w => weekMap[w]).filter(d => allData[d]);
+        const mTotal   = mFilled.reduce((s,d) => s+(allData[d]?.totalScore||0), 0);
+        const mElapsed = weeks.reduce((sum, s) => sum + (s === thisWeekSunStr ? weekMap[s].length : 7), 0);
+        const mMax     = mElapsed * 50;
+        const mPct     = mMax > 0 ? Math.round(mTotal/mMax*100) : 0;
+        const mExpand  = _tapahExpanded.has('month_'+mk);
 
         html += `<div style="margin-bottom:10px;">
             <div onclick="toggleTapahGroup('month_${mk}')"
@@ -4069,13 +4080,14 @@ function renderTapahReport(allData) {
         if (mExpand) {
             html += `<div style="background:#f8f9fa;border:1px solid #e0e0e0;border-top:none;border-radius:0 0 8px 8px;padding:8px;">`;
             weeks.forEach(sunStr => {
-                const wDates  = weekMap[sunStr];
-                const wFilled = wDates.filter(d => allData[d]);
-                const wTotal  = wFilled.reduce((s,d) => s+(allData[d]?.totalScore||0), 0);
-                const wMax    = wFilled.length * 50;
-                const wPct    = wMax > 0 ? Math.round(wTotal/wMax*100) : 0;
-                const wExpand = _tapahExpanded.has('week_'+sunStr);
-                const isCur   = sunStr === thisWeekSunStr;
+                const wDates   = weekMap[sunStr];
+                const wFilled  = wDates.filter(d => allData[d]);
+                const wTotal   = wFilled.reduce((s,d) => s+(allData[d]?.totalScore||0), 0);
+                const isCur    = sunStr === thisWeekSunStr;
+                const wElapsed = isCur ? wDates.length : 7;
+                const wMax     = wElapsed * 50;
+                const wPct     = wMax > 0 ? Math.round(wTotal/wMax*100) : 0;
+                const wExpand  = _tapahExpanded.has('week_'+sunStr);
 
                 html += `<div style="margin-bottom:6px;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
                     <div onclick="toggleTapahGroup('week_${sunStr}')"
@@ -4120,7 +4132,7 @@ function renderTapahReport(allData) {
                                 ${entry ? `<span style="background:${bg};color:${tc};padding:2px 6px;border-radius:4px;font-weight:700;font-size:11px;white-space:nowrap;">${val==='yes'?'Y':val==='partial'?'P':val==='no'?'N':'–'} <span style="font-size:9px;">(${sc>=0?'+':''}${sc??'–'})</span></span>` : '<span style="color:#ccc;">–</span>'}
                             </td>`;
                         });
-                        const rowMax = wFilled.length * 5;
+                        const rowMax = wElapsed * 5;
                         const rPct = rowMax > 0 ? Math.round(rowTotal/rowMax*100) : 0;
                         html += `<tr>
                             <td style="padding:7px 10px;background:${rowBg};color:#2c3e50;">${q.label}${q.target?`<span style="color:#aaa;font-size:10px;margin-left:4px;">(${q.target})</span>`:''}</td>
@@ -4146,7 +4158,7 @@ function renderTapahReport(allData) {
                                 ${entry ? `<span style="background:${bg};color:${tc};padding:2px 6px;border-radius:4px;font-weight:700;font-size:11px;white-space:nowrap;">${val==='yes'?'Y':val==='partial'?'P':val==='no'?'N':'–'} <span style="font-size:9px;">(${sc>=0?'+':''}${sc??'–'})</span></span>` : '<span style="color:#ccc;">–</span>'}
                             </td>`;
                         });
-                        const rowMax = wFilled.length * 5;
+                        const rowMax = wElapsed * 5;
                         const rPct = rowMax > 0 ? Math.round(rowTotal/rowMax*100) : 0;
                         html += `<tr>
                             <td style="padding:7px 10px;background:${rowBg};color:#2c3e50;">${q.label}</td>

@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Read(//d//**)"
+      "Read(//d//**)",
+      "Read(//d d:/riya personal/RAPP/Sadhana Tracker/Sadhana Tracker- Coordinators Position based based/**)",
+      "Bash(node -e \"console.log\\(-1 || 0\\); console.log\\(0 || 0\\); console.log\\(-1 ?? 0\\); console.log\\(0 ?? 0\\);\")"
     ]
   }
 }
