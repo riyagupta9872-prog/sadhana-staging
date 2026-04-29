@@ -3105,7 +3105,7 @@ function renderTapah2Card(idx) {
                     <div style="font-size:11px;color:#bbb;margin-top:2px;">${rangeLabel}</div>
                 </div>
                 <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
-                    <input type="number" id="tapah2-input-${q.id}" min="-${q.max}" max="${q.max}" step="0.5"
+                    <input type="number" id="tapah2-input-${q.id}" min="-${q.max}" max="${q.max}" step="any"
                         placeholder="0" value="${existing !== undefined ? existing : ''}"
                         style="width:62px;padding:8px 4px;border:2px solid #e67e22;border-radius:8px;font-size:18px;font-weight:800;text-align:center;background:#fef9f5;color:#e67e22;"
                         oninput="updateTapah2Totals()">
@@ -3224,15 +3224,17 @@ function updateTapah2Totals() {
         const catScore = catQs.reduce((s, q) => s + _t2s(q.id), 0);
         const sub = document.getElementById('tapah2-cat-subtotal');
         if (sub) {
-            const col = catScore > 0 ? '#27ae60' : catScore < 0 ? '#e74c3c' : '#aaa';
+            const cs = parseFloat(catScore.toFixed(2));
+            const col = cs > 0 ? '#27ae60' : cs < 0 ? '#e74c3c' : '#aaa';
             sub.style.color = col;
-            sub.textContent = `${activeCat.label}: ${catScore > 0 ? '+' : ''}${catScore} / ${catMax}`;
+            sub.textContent = `${activeCat.label}: ${cs > 0 ? '+' : ''}${cs} / ${catMax}`;
         }
     }
 
     // Step 2: compute grand total from _tapah2Scores (all questions, explicit check)
     let total = 0;
     TAPAH2_QUESTIONS.forEach(q => { total += _t2s(q.id); });
+    total = parseFloat(total.toFixed(2)); // fix floating-point precision
     const pct   = Math.round((total / TAPAH2_MAX) * 100);
     const color = pct >= 50 ? '#27ae60' : pct >= 0 ? '#f39c12' : '#e74c3c';
 
@@ -3247,7 +3249,8 @@ function updateTapah2Totals() {
         catEl.innerHTML = TAPAH2_CATS.map(cat => {
             const catQs   = TAPAH2_QUESTIONS.filter(q2 => q2.cat === cat.id);
             const catMax  = catQs.reduce((s, q2) => s + q2.max, 0);
-            const catSc   = catQs.reduce((s, q2) => s + _t2s(q2.id), 0);
+            const catScRaw = catQs.reduce((s, q2) => s + _t2s(q2.id), 0);
+            const catSc   = parseFloat(catScRaw.toFixed(2));
             const anyDone = catQs.some(q2 => _tapah2Scores[q2.id] !== undefined);
             const cp      = anyDone ? Math.round((catSc / catMax) * 100) : null;
             const col     = !anyDone ? '#ccc' : cp >= 50 ? '#27ae60' : cp >= 0 ? '#f39c12' : '#e74c3c';
@@ -3313,9 +3316,10 @@ window.submitTapah2 = async () => {
     const scores = {};
     let total = 0;
     TAPAH2_QUESTIONS.forEach(q => {
-        scores[q.id] = Math.max(-q.max, Math.min(q.max, _t2s(q.id)));
+        scores[q.id] = parseFloat(Math.max(-q.max, Math.min(q.max, _t2s(q.id))).toFixed(2));
         total += scores[q.id];
     });
+    total = parseFloat(total.toFixed(2));
     const percent = Math.round((total / TAPAH2_MAX) * 100);
 
     try {
