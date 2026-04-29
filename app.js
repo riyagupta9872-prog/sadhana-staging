@@ -4198,6 +4198,16 @@ function renderTapahReport(allData) {
 
     container.innerHTML = html || '<p style="color:#aaa;text-align:center;padding:30px;">No Tapah data yet. Start tracking!</p>';
 }
+function masterRefresh() {
+    if ('caches' in window) {
+        caches.keys().then(keys =>
+            Promise.all(keys.map(k => caches.delete(k)))
+        ).then(() => location.reload(true));
+    } else {
+        location.reload(true);
+    }
+}
+
 function setupDateSelect() {
     const s = document.getElementById('sadhana-date');
     if (!s) return;
