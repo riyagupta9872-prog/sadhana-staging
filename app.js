@@ -3105,7 +3105,7 @@ function renderTapah2Card(idx) {
                     <div style="font-size:11px;color:#bbb;margin-top:2px;">${rangeLabel}</div>
                 </div>
                 <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
-                    <input type="number" id="tapah2-input-${q.id}" min="-${q.max}" max="${q.max}" step="1"
+                    <input type="number" id="tapah2-input-${q.id}" min="-${q.max}" max="${q.max}" step="0.5"
                         placeholder="0" value="${existing !== undefined ? existing : ''}"
                         style="width:62px;padding:8px 4px;border:2px solid #e67e22;border-radius:8px;font-size:18px;font-weight:800;text-align:center;background:#fef9f5;color:#e67e22;"
                         oninput="updateTapah2Totals()">
@@ -3178,7 +3178,7 @@ function _tapah2SaveCurrentCard() {
     TAPAH2_QUESTIONS.filter(q => q.cat === cat.id).forEach(q => {
         const inp = document.getElementById(`tapah2-input-${q.id}`);
         if (!inp) return;
-        const raw = parseInt(inp.value, 10);
+        const raw = parseFloat(inp.value);
         if (!isNaN(raw)) _tapah2Scores[q.id] = Math.max(-q.max, Math.min(q.max, raw));
         // if empty/incomplete, leave existing _tapah2Scores[q.id] unchanged
     });
@@ -3209,11 +3209,11 @@ function updateTapah2Totals() {
         TAPAH2_QUESTIONS.filter(q => q.cat === activeCat.id).forEach(q => {
             const inp = document.getElementById(`tapah2-input-${q.id}`);
             if (!inp) return;
-            const raw = parseInt(inp.value, 10);
+            const raw = parseFloat(inp.value);
             if (!isNaN(raw)) {
                 const cl = Math.max(-q.max, Math.min(q.max, raw));
                 _tapah2Scores[q.id] = cl;
-                if (inp.value !== String(cl)) inp.value = cl;
+                if (parseFloat(inp.value) !== cl) inp.value = cl;
             }
             // if input is empty/incomplete (e.g. just typed '-'), leave _tapah2Scores as-is
         });
