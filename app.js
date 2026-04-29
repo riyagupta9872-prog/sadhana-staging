@@ -21,7 +21,7 @@ let editingDate = null;
 
 // --- 2. HELPERS ---
 // App start date — days before this date are not penalised as NR (app didn't exist yet)
-const APP_START_DATE = '2026-04-30';
+const APP_START_DATE = '2026-04-29';
 
 // Local date helpers — avoids toISOString() UTC bug
 // (IST users between midnight–5:30 AM would get yesterday's date with toISOString)
