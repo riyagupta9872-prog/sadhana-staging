@@ -3481,7 +3481,7 @@ function renderTapah2Report(allData) {
                     html += `<div style="overflow-x:auto;background:white;border-top:1px solid #f0f0f0;">
                         <table style="width:100%;border-collapse:collapse;font-size:12px;">
                             <thead><tr>
-                                <th style="padding:8px 10px;background:#fef0e7;text-align:left;color:#2c3e50;font-weight:700;white-space:nowrap;min-width:140px;position:sticky;left:0;z-index:3;">Category</th>
+                                <th style="padding:8px 10px;background:#fef0e7;text-align:left;color:#2c3e50;font-weight:700;white-space:nowrap;min-width:140px;">Category</th>
                                 <th style="padding:8px;background:#fef0e7;text-align:center;color:#888;font-weight:600;">Max</th>`;
                     wDates.forEach(ds => {
                         const d = new Date(ds+'T00:00:00');
@@ -3504,7 +3504,7 @@ function renderTapah2Report(allData) {
                             cells += `<td style="padding:8px;text-align:center;background:${rowBg};color:${col};font-weight:${entry?'700':'400'};">${entry ? sc : '–'}</td>`;
                         });
                         html += `<tr>
-                            <td style="padding:8px 10px;background:${rowBg};color:#2c3e50;font-weight:600;position:sticky;left:0;z-index:1;">${cat.emoji} ${cat.label}</td>
+                            <td style="padding:8px 10px;background:${rowBg};color:#2c3e50;font-weight:600;">${cat.emoji} ${cat.label}</td>
                             <td style="padding:8px;text-align:center;background:${rowBg};color:#aaa;">${cm}</td>
                             ${cells}
                             <td style="padding:8px;text-align:center;background:${rowBg};font-weight:700;color:#e67e22;">${rowTotal}</td>
@@ -3513,7 +3513,7 @@ function renderTapah2Report(allData) {
 
                     // Totals row
                     html += `<tr style="background:#fef0e7;border-top:2px solid #e67e22;">
-                        <td style="padding:8px 10px;font-weight:700;color:#e67e22;position:sticky;left:0;z-index:1;background:#fef0e7;">Total</td>
+                        <td style="padding:8px 10px;font-weight:700;color:#e67e22;">Total</td>
                         <td style="padding:8px;text-align:center;color:#aaa;font-weight:700;">${TAPAH2_MAX}</td>`;
                     wDates.forEach(ds => {
                         const entry = allData[ds];
@@ -4112,7 +4112,7 @@ function renderTapahReport(allData) {
                     html += `<div style="overflow-x:auto;background:white;border-top:1px solid #f0f0f0;">
                         <table style="width:100%;border-collapse:collapse;font-size:12px;">
                             <thead><tr>
-                                <th style="padding:8px 10px;background:#f0eaf8;text-align:left;color:#2c3e50;font-weight:700;white-space:nowrap;min-width:200px;position:sticky;left:0;z-index:3;">Question</th>
+                                <th style="padding:8px 10px;background:#f0eaf8;text-align:left;color:#2c3e50;font-weight:700;white-space:nowrap;min-width:200px;">Question</th>
                                 <th style="padding:8px 6px;background:#f0eaf8;text-align:center;color:#888;font-weight:600;white-space:nowrap;">Max</th>`;
                     wDates.forEach(ds => {
                         const d = new Date(ds+'T00:00:00');
@@ -4121,7 +4121,7 @@ function renderTapahReport(allData) {
                     html += `<th style="padding:8px;background:#f0eaf8;text-align:center;color:#764ba2;font-weight:700;">Total</th></tr></thead><tbody>`;
 
                     // Anukul section
-                    html += `<tr><td colspan="${3+wDates.length}" style="background:#e8f8f0;font-weight:700;color:#27ae60;padding:6px 10px;font-size:11px;letter-spacing:0.4px;position:sticky;left:0;">🌿 ANUKULASYA (Favourable) — max 5/day each</td></tr>`;
+                    html += `<tr><td colspan="${3+wDates.length}" style="background:#e8f8f0;font-weight:700;color:#27ae60;padding:6px 10px;font-size:11px;letter-spacing:0.4px;">🌿 ANUKULASYA (Favourable) — max 5/day each</td></tr>`;
                     ANUKUL_QUESTIONS.forEach((q, qi) => {
                         const rowBg = qi % 2 === 0 ? '#fff' : '#fafafa';
                         let rowTotal = 0;
@@ -4139,7 +4139,7 @@ function renderTapahReport(allData) {
                         const rowMax = wElapsed * 5;
                         const rPct = rowMax > 0 ? Math.round(rowTotal/rowMax*100) : 0;
                         html += `<tr>
-                            <td style="padding:7px 10px;background:${rowBg};color:#2c3e50;position:sticky;left:0;z-index:1;">${q.label}${q.target?`<span style="color:#aaa;font-size:10px;margin-left:4px;">(${q.target})</span>`:''}</td>
+                            <td style="padding:7px 10px;background:${rowBg};color:#2c3e50;">${q.label}${q.target?`<span style="color:#aaa;font-size:10px;margin-left:4px;">(${q.target})</span>`:''}</td>
                             <td style="padding:7px 6px;background:${rowBg};text-align:center;color:#888;">5</td>
                             ${cells}
                             <td style="padding:7px 6px;text-align:center;background:${rowBg};font-weight:700;color:${sCol(rPct)};">${rowMax>0?rowTotal:'–'}</td>
@@ -4147,7 +4147,7 @@ function renderTapahReport(allData) {
                     });
 
                     // Pratikul section
-                    html += `<tr><td colspan="${3+wDates.length}" style="background:#fde8e8;font-weight:700;color:#e74c3c;padding:6px 10px;font-size:11px;letter-spacing:0.4px;position:sticky;left:0;">🚫 PRATIKULASYA (Unfavourable) — max 5/day each</td></tr>`;
+                    html += `<tr><td colspan="${3+wDates.length}" style="background:#fde8e8;font-weight:700;color:#e74c3c;padding:6px 10px;font-size:11px;letter-spacing:0.4px;">🚫 PRATIKULASYA (Unfavourable) — max 5/day each</td></tr>`;
                     PRATIKUL_QUESTIONS.forEach((q, qi) => {
                         const rowBg = qi % 2 === 0 ? '#fff' : '#fafafa';
                         let rowTotal = 0;
@@ -4165,7 +4165,7 @@ function renderTapahReport(allData) {
                         const rowMax = wElapsed * 5;
                         const rPct = rowMax > 0 ? Math.round(rowTotal/rowMax*100) : 0;
                         html += `<tr>
-                            <td style="padding:7px 10px;background:${rowBg};color:#2c3e50;position:sticky;left:0;z-index:1;">${q.label}</td>
+                            <td style="padding:7px 10px;background:${rowBg};color:#2c3e50;">${q.label}</td>
                             <td style="padding:7px 6px;background:${rowBg};text-align:center;color:#888;">5</td>
                             ${cells}
                             <td style="padding:7px 6px;text-align:center;background:${rowBg};font-weight:700;color:${sCol(rPct)};">${rowMax>0?rowTotal:'–'}</td>
@@ -4182,7 +4182,7 @@ function renderTapahReport(allData) {
                         totalCells += `<td style="padding:8px 4px;text-align:center;background:${bg};font-weight:800;color:${tc};font-size:13px;">${sc !== null ? `${sc}<span style="font-size:10px;font-weight:400;">/50</span>` : '–'}</td>`;
                     });
                     html += `<tr style="border-top:2px solid #e0e0e0;">
-                        <td colspan="2" style="padding:8px 10px;font-weight:700;font-size:12px;color:#2c3e50;background:#f8f9fa;position:sticky;left:0;z-index:1;">Total Score</td>
+                        <td colspan="2" style="padding:8px 10px;font-weight:700;font-size:12px;color:#2c3e50;background:#f8f9fa;">Total Score</td>
                         ${totalCells}
                         <td style="padding:8px 6px;text-align:center;background:#f0eaf8;font-weight:800;color:${sCol(wPct)};font-size:13px;">${wTotal}<span style="font-size:10px;font-weight:400;">/${wMax}</span></td>
                     </tr>`;
